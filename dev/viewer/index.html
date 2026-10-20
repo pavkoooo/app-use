@@ -55,6 +55,7 @@
       position: absolute;
       border: 1px solid rgba(27, 36, 48, 0.28);
       border-radius: 3px;
+      cursor: pointer;
     }
     .frame.leaf {
       background: rgba(29, 111, 191, 0.1);
@@ -243,6 +244,22 @@
               var span = document.createElement("span");
               span.textContent = label;
               el.appendChild(span);
+            }
+            if (node.id) {
+              el.addEventListener("click", function (event) {
+                event.stopPropagation();
+                fetch(broker + "/perform", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "click", nodeId: node.id })
+                }).then(function (response) {
+                  if (response.status === 409) {
+                    meta.textContent = registerMessage;
+                    return;
+                  }
+                  if (!response.ok) throw new Error("perform failed");
+                }).catch(offline);
+              });
             }
             stage.appendChild(el);
           });

@@ -31,9 +31,10 @@ if not snapshot["app"] or not snapshot["capturedAt"]:
     sys.stderr.write("app name or capturedAt is empty\n")
     sys.exit(1)
 
-node_keys = {"role", "frame", "texts", "children"}
+node_keys = {"id", "role", "frame", "texts", "children"}
 frame_keys = {"x", "y", "width", "height"}
 texts = []
+ids = []
 count = 0
 
 def walk(node, where):
@@ -42,6 +43,14 @@ def walk(node, where):
     if set(node) != node_keys:
         sys.stderr.write("unexpected node keys at %s: %s\n" % (where, sorted(node)))
         sys.exit(1)
+    node_id = node["id"]
+    if not isinstance(node_id, str) or not node_id:
+        sys.stderr.write("missing node id at %s\n" % where)
+        sys.exit(1)
+    if node_id in ids:
+        sys.stderr.write("duplicate node id %s\n" % node_id)
+        sys.exit(1)
+    ids.append(node_id)
     frame = node["frame"]
     if set(frame) != frame_keys or any(not isinstance(frame[k], (int, float)) for k in frame_keys):
         sys.stderr.write("bad frame at %s\n" % where)

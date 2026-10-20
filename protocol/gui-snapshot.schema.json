@@ -36,9 +36,14 @@
     "node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["role", "frame", "texts", "children"],
-      "description": "One node in the interface tree. texts holds every non-empty string of copy on that node.",
+      "required": ["id", "role", "frame", "texts", "children"],
+      "description": "One node in the interface tree. id stays the same while the tree shape stays the same. texts holds every non-empty string of copy on that node.",
       "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable identifier for this node."
+        },
         "role": {
           "type": "string"
         },

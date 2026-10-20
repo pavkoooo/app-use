@@ -57,6 +57,11 @@ def read_snapshot():
         return handle.read()
 
 
+def perform_click(target, node_id):
+    os.makedirs(VIEWER_DIR, exist_ok=True)
+    subprocess.run(reader_argv(target, VIEWER_DIR) + ["perform", node_id], check=True, timeout=45)
+
+
 def list_apps():
     raw = subprocess.check_output([ATTACH, "apps"], cwd=ROOT, timeout=90)
     catalog = json.loads(raw.decode("utf-8"))
@@ -200,6 +205,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/events":
             self.handle_publish()
             return
+        if path == "/perform":
+            self.handle_perform()
+            return
         self.send_json(404, {"error": "not found"})
 
     def handle_listen(self, unregister):
@@ -283,6 +291,30 @@ class Handler(BaseHTTPRequestHandler):
             "listener": name,
             "subjects": current,
         })
+
+    def handle_perform(self):
+        try:
+            body = self.read_body()
+        except (ValueError, json.JSONDecodeError):
+            self.send_json(400, {"error": "invalid json"})
+            return
+        if set(body) != {"action", "nodeId"} or body.get("action") != "click":
+            self.send_json(400, {"error": "gui.perform requires action click and nodeId"})
+            return
+        node_id = body.get("nodeId")
+        if not isinstance(node_id, str) or not node_id or any(char in node_id for char in "\r\n\0"):
+            self.send_json(400, {"error": "gui.perform requires action click and nodeId"})
+            return
+        target = registered_target()
+        if not target:
+            self.send_json(409, {"error": "no app registered"})
+            return
+        try:
+            perform_click(target, node_id)
+        except Exception as exc:
+            self.send_json(500, {"error": str(exc)})
+            return
+        self.send_json(200, {"action": "click", "nodeId": node_id})
 
     def handle_publish(self):
         try:

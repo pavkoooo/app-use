@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gui-perform.schema.json",
+  "title": "gui.perform",
+  "description": "Perform an action on one node of the attached application. nodeId is the stable id from a GUI snapshot.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "nodeId"],
+  "properties": {
+    "action": {
+      "const": "click",
+      "description": "Activate the node."
+    },
+    "nodeId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable id of the node to act on."
+    }
+  }
+}

@@ -11,6 +11,7 @@ struct Frame: Codable {
 }
 
 struct Node: Codable {
+    let id: String
     let role: String
     let frame: Frame
     let texts: [String]
@@ -231,16 +232,73 @@ func includedChildren(of element: AXUIElement) -> [AXUIElement] {
     return children
 }
 
-func readNode(_ element: AXUIElement, depth: Int) -> Node {
+func nodeID(_ parent: String, _ index: Int) -> String {
+    return "\(parent)/\(index)"
+}
+
+func readNode(_ element: AXUIElement, depth: Int, id: String) -> Node {
     let role = roleOf(element)
     let frame = frameOf(element)
     let texts = textsOf(element)
     if sawPermissionDenied || depth >= 40 || emittedNodes >= maxNodes {
-        return Node(role: role, frame: frame, texts: texts, children: [])
+        return Node(id: id, role: role, frame: frame, texts: texts, children: [])
     }
     emittedNodes += 1
-    let children = includedChildren(of: element).map { readNode($0, depth: depth + 1) }
-    return Node(role: role, frame: frame, texts: texts, children: children)
+    let children = includedChildren(of: element).enumerated().map { index, child in
+        readNode(child, depth: depth + 1, id: nodeID(id, index))
+    }
+    return Node(id: id, role: role, frame: frame, texts: texts, children: children)
+}
+
+func findElement(_ element: AXUIElement, id: String, target: String, depth: Int) -> AXUIElement? {
+    if id == target {
+        return element
+    }
+    if depth >= 40 {
+        return nil
+    }
+    for (index, child) in includedChildren(of: element).enumerated() {
+        if let found = findElement(child, id: nodeID(id, index), target: target, depth: depth + 1) {
+            return found
+        }
+    }
+    return nil
+}
+
+func actionNames(_ element: AXUIElement) -> [String] {
+    var names: CFArray?
+    guard AXUIElementCopyActionNames(element, &names) == .success, let names = names else {
+        return []
+    }
+    return names as? [String] ?? []
+}
+
+func performClick(_ element: AXUIElement, nodeID: String) {
+    let press = kAXPressAction as String
+    if actionNames(element).contains(press) {
+        let error = AXUIElementPerformAction(element, press as CFString)
+        if error != .success {
+            fputs("press failed for \(nodeID): \(error.rawValue)\n", stderr)
+            exit(1)
+        }
+        fputs("pressed \(nodeID)\n", stderr)
+        return
+    }
+    let frame = frameOf(element)
+    guard frame.width > 0, frame.height > 0 else {
+        fputs("node \(nodeID) has no press action and no frame\n", stderr)
+        exit(1)
+    }
+    let point = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
+    guard let source = CGEventSource(stateID: .hidSystemState),
+          let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
+          let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
+        fputs("could not create a click for \(nodeID)\n", stderr)
+        exit(1)
+    }
+    down.post(tap: .cghidEventTap)
+    up.post(tap: .cghidEventTap)
+    fputs("clicked center of \(nodeID)\n", stderr)
 }
 
 func countNodes(_ node: Node) -> Int {
@@ -326,7 +384,7 @@ func isoTimestamp() -> String {
 func captureTree(_ application: AXUIElement) -> Node? {
     sawPermissionDenied = false
     emittedNodes = 0
-    let tree = readNode(application, depth: 0)
+    let tree = readNode(application, depth: 0, id: "0")
     if sawPermissionDenied {
         denyPermissionAndExit()
     }
@@ -356,7 +414,7 @@ func treeSignature(_ node: Node) -> String {
     return "\(node.role)\u{1d}\(frame)\u{1d}\(texts)\u{1d}\(children)"
 }
 
-func publish(_ snapshot: Snapshot) {
+func publish(_ snapshot: Snapshot, wait: Bool = false) {
     struct Event: Encodable {
         let subject: String
         let payload: Snapshot
@@ -373,12 +431,44 @@ func publish(_ snapshot: Snapshot) {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.timeoutIntervalForResource = 2
     let session = URLSession(configuration: configuration)
-    session.dataTask(with: request) { _, _, error in
+    let done = DispatchSemaphore(value: 0)
+    let outcome = PublishOutcome()
+    session.dataTask(with: request) { _, response, error in
         if let error = error {
             fputs("publish failed: \(error.localizedDescription)\n", stderr)
+            outcome.failed = true
+        } else if let http = response as? HTTPURLResponse, http.statusCode != 202 {
+            fputs("publish status \(http.statusCode)\n", stderr)
+            outcome.failed = true
         }
         session.finishTasksAndInvalidate()
+        done.signal()
     }.resume()
+    if wait {
+        _ = done.wait(timeout: .now() + 3)
+        if outcome.failed {
+            exit(1)
+        }
+    }
+}
+
+final class PublishOutcome {
+    var failed = false
+}
+
+func captureChangedTree(_ application: AXUIElement, previous: String) -> Node? {
+    var latest: Node?
+    let deadline = Date().addingTimeInterval(2)
+    repeat {
+        if let tree = captureTree(application) {
+            latest = tree
+            if treeSignature(tree) != previous {
+                return tree
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    } while Date() < deadline
+    return latest
 }
 
 let watchNotifications: [String] = [
@@ -556,13 +646,24 @@ if arguments.count >= 2 && arguments[1] == "apps" {
     listAppsAndExit()
 }
 if arguments.count < 3 {
-    fputs("usage: gui-reader apps | gui-reader <targetApp> <outputDir> [watch]\n", stderr)
+    fputs("usage: gui-reader apps | gui-reader <targetApp> <outputDir> [watch | perform <nodeId>]\n", stderr)
     exit(64)
 }
 
 let targetApp = arguments[1]
 let outputDir = URL(fileURLWithPath: arguments[2], isDirectory: true)
-let watch = arguments.count >= 4 && arguments[3] == "watch"
+var watch = false
+var performID: String?
+if arguments.count >= 4 {
+    if arguments[3] == "watch" && arguments.count == 4 {
+        watch = true
+    } else if arguments[3] == "perform", arguments.count == 5, !arguments[4].isEmpty {
+        performID = arguments[4]
+    } else {
+        fputs("usage: gui-reader apps | gui-reader <targetApp> <outputDir> [watch | perform <nodeId>]\n", stderr)
+        exit(64)
+    }
+}
 
 _ = NSApplication.shared
 ensureTrusted()
@@ -593,6 +694,28 @@ guard let tree = waitForTree(application) else {
 }
 
 let appName = running.localizedName ?? targetApp
+
+if let nodeID = performID {
+    guard let element = findElement(application, id: "0", target: nodeID, depth: 0) else {
+        fputs("no node \(nodeID)\n", stderr)
+        exit(1)
+    }
+    performClick(element, nodeID: nodeID)
+    guard let updated = captureChangedTree(application, previous: treeSignature(tree)) else {
+        fputs("read produced no tree after click\n", stderr)
+        exit(1)
+    }
+    let performed = Snapshot(app: appName, capturedAt: isoTimestamp(), tree: updated)
+    do {
+        try writeSnapshot(performed, to: outputDir)
+    } catch {
+        fputs("failed to write snapshot: \(error)\n", stderr)
+        exit(1)
+    }
+    publish(performed, wait: true)
+    fputs("performed click \(nodeID)\n", stderr)
+    exit(0)
+}
 
 if watch {
     let watcher = UIWatcher(application: application, outputDir: outputDir, appName: appName)
