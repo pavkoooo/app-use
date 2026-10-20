@@ -1,0 +1,10 @@
+{
+  "steps": [
+    {
+      "id": "attach-gui-reader",
+      "action": "attachPlugin",
+      "capability": "gui.read",
+      "targetApp": "calculator"
+    }
+  ]
+}

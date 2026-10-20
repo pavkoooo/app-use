@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gui-snapshot.schema.json",
+  "title": "GUI snapshot",
+  "description": "A generic capture of an application interface: the app name, when it was captured, and a tree of nodes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["app", "capturedAt", "tree"],
+  "properties": {
+    "app": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name of the application that was read."
+    },
+    "capturedAt": {
+      "type": "string",
+      "minLength": 1,
+      "description": "When the snapshot was captured, as an ISO 8601 timestamp."
+    },
+    "tree": {
+      "$ref": "#/$defs/node"
+    }
+  },
+  "$defs": {
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "width": { "type": "number" },
+        "height": { "type": "number" }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "frame", "texts", "children"],
+      "description": "One node in the interface tree. texts holds every non-empty string of copy on that node.",
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "frame": {
+          "$ref": "#/$defs/frame"
+        },
+        "texts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        }
+      }
+    }
+  }
+}

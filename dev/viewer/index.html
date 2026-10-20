@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GUI snapshot</title>
+  <script src="snapshot.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1b2430;
+      --muted: #5d6b7c;
+      --line: #d7dee7;
+      --paper: #eef2f6;
+      --card: #ffffff;
+      --accent: #1d6fbf;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+    header { padding: 28px 32px 4px; }
+    h1 { margin: 0 0 6px; font-size: 22px; font-weight: 650; }
+    .meta { margin: 0; color: var(--muted); }
+    main {
+      display: grid;
+      grid-template-columns: minmax(280px, 440px) minmax(280px, 1fr);
+      gap: 20px;
+      padding: 16px 32px 48px;
+    }
+    section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      min-width: 0;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .stage {
+      position: relative;
+      background: #f7f9fb;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .frame {
+      position: absolute;
+      border: 1px solid rgba(27, 36, 48, 0.28);
+      border-radius: 3px;
+    }
+    .frame.leaf {
+      background: rgba(29, 111, 191, 0.1);
+      border-color: rgba(29, 111, 191, 0.55);
+    }
+    .frame span {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 0 2px;
+      color: var(--ink);
+      font: 11px/1 ui-sans-serif, system-ui, sans-serif;
+      white-space: nowrap;
+    }
+    .node { padding: 10px 0; border-top: 1px solid var(--line); }
+    .node:first-of-type { border-top: 0; padding-top: 0; }
+    .role {
+      margin: 0 0 4px;
+      color: var(--muted);
+      font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    ul { margin: 0; padding-left: 18px; }
+    li { margin: 2px 0; overflow-wrap: anywhere; }
+    .empty { margin: 0; color: var(--muted); }
+    @media (max-width: 860px) {
+      header, main { padding-left: 16px; padding-right: 16px; }
+      main { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>GUI snapshot</h1>
+    <p class="meta" id="meta">Loading snapshot…</p>
+  </header>
+  <main>
+    <section>
+      <h2>Layout</h2>
+      <div class="stage" id="stage"></div>
+    </section>
+    <section>
+      <h2 id="copy-heading">Copy</h2>
+      <div id="copy"></div>
+    </section>
+  </main>
+  <script>
+    (function () {
+      var meta = document.getElementById("meta");
+      var stage = document.getElementById("stage");
+      var copy = document.getElementById("copy");
+      var copyHeading = document.getElementById("copy-heading");
+      var snap = window.SNAPSHOT;
+
+      function say(text) {
+        var p = document.createElement("p");
+        p.className = "empty";
+        p.textContent = text;
+        return p;
+      }
+
+      if (!snap || !snap.tree) {
+        meta.textContent = "No snapshot loaded. Run skill/start.sh, then reopen this page.";
+        stage.appendChild(say("No frames yet."));
+        copy.appendChild(say("No copy yet."));
+        return;
+      }
+
+      var nodes = [];
+      function walk(node) {
+        nodes.push(node);
+        (node.children || []).forEach(walk);
+      }
+      walk(snap.tree);
+
+      var textCount = 0;
+      nodes.forEach(function (node) {
+        textCount += (node.texts || []).length;
+      });
+      meta.textContent = (snap.app || "Unknown app") + " · " + (snap.capturedAt || "unknown time")
+        + " · " + nodes.length + " nodes · " + textCount + " strings";
+
+      function usable(frame) {
+        return frame && frame.width > 1 && frame.height > 1
+          && frame.x > -2000 && frame.y > -2000
+          && frame.x < 10000 && frame.y < 10000
+          && frame.width < 5000 && frame.height < 5000;
+      }
+      var usableNodes = nodes.filter(function (node) { return usable(node.frame); });
+      var focus = null;
+      var focusArea = 0;
+      usableNodes.forEach(function (node) {
+        var frame = node.frame;
+        if (frame.width >= 900 || frame.height >= 900) return;
+        var area = frame.width * frame.height;
+        if (area > focusArea) {
+          focus = node;
+          focusArea = area;
+        }
+      });
+      var focused = [];
+      (function collect(node) {
+        focused.push(node);
+        (node.children || []).forEach(collect);
+      })(focus || snap.tree);
+      var boxes = focused.filter(function (node) { return usable(node.frame); });
+
+      if (!boxes.length) {
+        stage.appendChild(say("The snapshot has no sized frames."));
+      } else {
+        var minX = Infinity;
+        var minY = Infinity;
+        var maxX = -Infinity;
+        var maxY = -Infinity;
+        boxes.forEach(function (node) {
+          var frame = node.frame;
+          minX = Math.min(minX, frame.x);
+          minY = Math.min(minY, frame.y);
+          maxX = Math.max(maxX, frame.x + frame.width);
+          maxY = Math.max(maxY, frame.y + frame.height);
+        });
+        var boundsW = Math.max(1, maxX - minX);
+        var boundsH = Math.max(1, maxY - minY);
+        var maxW = Math.min(400, stage.parentElement.clientWidth - 32);
+        if (!(maxW > 80)) maxW = 360;
+        var scale = Math.min(maxW / boundsW, 520 / boundsH);
+        stage.style.width = Math.ceil(boundsW * scale) + "px";
+        stage.style.height = Math.ceil(boundsH * scale) + "px";
+
+        boxes.forEach(function (node) {
+          var frame = node.frame;
+          var el = document.createElement("div");
+          el.className = "frame";
+          var width = Math.max(1, frame.width * scale);
+          var height = Math.max(1, frame.height * scale);
+          el.style.left = ((frame.x - minX) * scale) + "px";
+          el.style.top = ((frame.y - minY) * scale) + "px";
+          el.style.width = width + "px";
+          el.style.height = height + "px";
+          var leaf = !node.children || !node.children.length;
+          if (leaf) el.className += " leaf";
+          var label = "";
+          if (leaf) {
+            (node.texts || []).some(function (text) {
+              if (text && text.length <= 8) {
+                label = text;
+                return true;
+              }
+              return false;
+            });
+          }
+          if (label && width >= 14 && height >= 12) {
+            var span = document.createElement("span");
+            span.textContent = label;
+            el.appendChild(span);
+          }
+          stage.appendChild(el);
+        });
+      }
+
+      var shown = 0;
+      nodes.forEach(function (node) {
+        var texts = node.texts || [];
+        if (!texts.length) return;
+        shown += 1;
+        var card = document.createElement("article");
+        card.className = "node";
+        var role = document.createElement("p");
+        role.className = "role";
+        var frame = node.frame || { x: 0, y: 0, width: 0, height: 0 };
+        role.textContent = (node.role || "unknown")
+          + " · " + Math.round(frame.x) + "," + Math.round(frame.y)
+          + " " + Math.round(frame.width) + "×" + Math.round(frame.height);
+        var list = document.createElement("ul");
+        texts.forEach(function (text) {
+          var item = document.createElement("li");
+          item.textContent = text;
+          list.appendChild(item);
+        });
+        card.appendChild(role);
+        card.appendChild(list);
+        copy.appendChild(card);
+      });
+      copyHeading.textContent = "Copy · " + shown + " nodes";
+      if (!shown) copy.appendChild(say("No text was read."));
+    }());
+  </script>
+</body>
+</html>
