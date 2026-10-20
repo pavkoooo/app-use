@@ -9,11 +9,22 @@ SOURCE="$PLUGIN_DIR/main.swift"
 BINARY="$PLUGIN_DIR/gui-reader"
 OUT_DIR="$ROOT/dev/viewer"
 
-if [[ ! -f "$PLAN" ]]; then
-  echo "missing plan: $PLAN" >&2
-  exit 1
+MODE="once"
+if [[ "${1:-}" == "watch" ]]; then
+  MODE="watch"
+elif [[ "${1:-}" == "apps" ]]; then
+  MODE="apps"
 fi
 
+if [[ "$MODE" != "apps" ]]; then
+  if [[ ! -f "$PLAN" ]]; then
+    echo "missing plan: $PLAN" >&2
+    exit 1
+  fi
+fi
+
+TARGET_APP=""
+if [[ "$MODE" != "apps" ]]; then
 TARGET_APP="$(
   python3 - "$PLAN" "$PLUGIN_DIR/manifest.json" <<'PY'
 import json
@@ -48,15 +59,17 @@ if not isinstance(target, str) or not target:
 sys.stdout.write(target)
 PY
 )"
+  if [[ -n "${TARGET_APP_OVERRIDE:-}" ]]; then
+    TARGET_APP="$TARGET_APP_OVERRIDE"
+  fi
+fi
 
 mkdir -p "$OUT_DIR"
 
-MODE="once"
-if [[ "${1:-}" == "watch" ]]; then
-  MODE="watch"
-fi
-
 run_reader() {
+  if [[ "$MODE" == "apps" ]]; then
+    exec "$@" apps
+  fi
   if [[ "$MODE" == "watch" ]]; then
     exec "$@" "$TARGET_APP" "$OUT_DIR" watch
   fi

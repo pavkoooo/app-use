@@ -509,9 +509,54 @@ final class UIWatcher {
 
 var activeWatcher: UIWatcher?
 
+struct ListedApp: Codable {
+    let id: String
+    let name: String
+}
+
+struct AppCatalog: Codable {
+    let apps: [ListedApp]
+}
+
+func listAppsAndExit() -> Never {
+    _ = NSApplication.shared
+    var seen = Set<String>()
+    var apps: [ListedApp] = []
+    let running = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
+    for app in running {
+        guard let name = app.localizedName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+            continue
+        }
+        let id: String
+        if app.bundleIdentifier == "com.apple.calculator" || name.caseInsensitiveCompare("Calculator") == .orderedSame {
+            id = "calculator"
+        } else {
+            id = name
+        }
+        if seen.contains(id) {
+            continue
+        }
+        seen.insert(id)
+        apps.append(ListedApp(id: id, name: name))
+    }
+    if !seen.contains("calculator") {
+        apps.append(ListedApp(id: "calculator", name: "Calculator"))
+    }
+    apps.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    let data = (try? encoder.encode(AppCatalog(apps: apps))) ?? Data("{}".utf8)
+    FileHandle.standardOutput.write(data)
+    FileHandle.standardOutput.write(Data([0x0A]))
+    exit(0)
+}
+
 let arguments = CommandLine.arguments
+if arguments.count >= 2 && arguments[1] == "apps" {
+    listAppsAndExit()
+}
 if arguments.count < 3 {
-    fputs("usage: gui-reader <targetApp> <outputDir> [watch]\n", stderr)
+    fputs("usage: gui-reader apps | gui-reader <targetApp> <outputDir> [watch]\n", stderr)
     exit(64)
 }
 

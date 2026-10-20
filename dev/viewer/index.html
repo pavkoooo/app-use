@@ -82,16 +82,17 @@
     ul { margin: 0; padding-left: 18px; }
     li { margin: 2px 0; overflow-wrap: anywhere; }
     .empty { margin: 0; color: var(--muted); }
-    .toolbar { display: flex; gap: 12px; align-items: center; margin: 12px 0 0; }
-    button {
+    .toolbar { display: flex; gap: 12px; align-items: center; margin: 12px 0 0; flex-wrap: wrap; }
+    button, select {
       border: 1px solid var(--line);
       background: var(--card);
       color: var(--ink);
       border-radius: 8px;
       padding: 6px 12px;
       font: 14px/1.2 ui-sans-serif, system-ui, sans-serif;
-      cursor: pointer;
     }
+    button { cursor: pointer; }
+    select { max-width: 240px; }
     button:hover { border-color: var(--accent); }
     #listener.connected { color: #1b7f4a; }
     #listener.disconnected { color: #a15c12; }
@@ -106,6 +107,8 @@
     <h1>GUI snapshot</h1>
     <p class="meta" id="meta">Loading snapshot…</p>
     <div class="toolbar">
+      <select id="app" aria-label="App"></select>
+      <button id="register" type="button">注册</button>
       <button id="refresh" type="button">刷新</button>
       <p class="meta disconnected" id="listener">Listener disconnected</p>
     </div>
@@ -122,12 +125,18 @@
   </main>
   <script>
     (function () {
-      var broker = "http://127.0.0.1:47653";
+      var pageURL = "http://127.0.0.1:47653/";
+      var sameOrigin = location.hostname === "127.0.0.1" && String(location.port) === "47653";
+      var broker = sameOrigin ? "" : "http://127.0.0.1:47653";
       var meta = document.getElementById("meta");
       var stage = document.getElementById("stage");
       var copy = document.getElementById("copy");
       var copyHeading = document.getElementById("copy-heading");
       var listener = document.getElementById("listener");
+      var appSelect = document.getElementById("app");
+      var source = null;
+      var offlineMessage = "Open " + pageURL + " to use this page.";
+      var registerMessage = "Choose an app and press 注册.";
 
       function say(text) {
         var p = document.createElement("p");
@@ -268,27 +277,98 @@
 
       render(window.SNAPSHOT);
 
-      document.getElementById("refresh").addEventListener("click", function () {
-        fetch(broker + "/snapshot").then(function (response) {
+      function offline(error) {
+        meta.textContent = error && error.name === "TypeError" ? offlineMessage : registerMessage;
+      }
+
+      function fillApps(body) {
+        var previous = appSelect.value;
+        appSelect.textContent = "";
+        (body.apps || []).forEach(function (app) {
+          var option = document.createElement("option");
+          option.value = app.id;
+          option.textContent = app.name || app.id;
+          appSelect.appendChild(option);
+        });
+        if (previous) appSelect.value = previous;
+        if (!appSelect.value) {
+          for (var i = 0; i < appSelect.options.length; i++) {
+            if (appSelect.options[i].value === "calculator") {
+              appSelect.selectedIndex = i;
+              break;
+            }
+          }
+        }
+      }
+
+      function openListener() {
+        if (source) source.close();
+        source = new EventSource(broker + "/events?listener=viewer");
+        source.onopen = function () {
+          listener.textContent = "Listener connected";
+          listener.className = "meta connected";
+        };
+        source.onerror = function () {
+          listener.textContent = "Listener disconnected";
+          listener.className = "meta disconnected";
+        };
+        source.addEventListener("gui.changed", function (event) {
+          var message = JSON.parse(event.data);
+          render(message.payload);
+        });
+      }
+
+      function refresh() {
+        return fetch(broker + "/snapshot").then(function (response) {
+          if (response.status === 409) {
+            meta.textContent = registerMessage;
+            return null;
+          }
           if (!response.ok) throw new Error("refresh failed");
           return response.json();
-        }).then(render).catch(function () {
-          meta.textContent = "Refresh failed. Start skill/start.sh and try again.";
-        });
+        }).then(function (snap) {
+          if (snap) render(snap);
+        }).catch(offline);
+      }
+
+      document.getElementById("refresh").addEventListener("click", refresh);
+
+      document.getElementById("register").addEventListener("click", function () {
+        var target = appSelect.value;
+        if (!target) {
+          meta.textContent = registerMessage;
+          return;
+        }
+        fetch(broker + "/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            steps: [{
+              id: "attach-gui-reader",
+              action: "attachPlugin",
+              capability: "gui.read",
+              targetApp: target
+            }],
+            listener: {
+              operation: "register",
+              listener: "viewer",
+              subjects: ["gui.changed"]
+            }
+          })
+        }).then(function (response) {
+          if (!response.ok) throw new Error("register failed");
+          return response.json();
+        }).then(function () {
+          openListener();
+          return refresh();
+        }).catch(offline);
       });
 
-      var source = new EventSource(broker + "/events");
-      source.onopen = function () {
-        listener.textContent = "Listener connected";
-        listener.className = "meta connected";
-      };
-      source.onerror = function () {
-        listener.textContent = "Listener disconnected";
-        listener.className = "meta disconnected";
-      };
-      source.addEventListener("gui.changed", function (event) {
-        var message = JSON.parse(event.data);
-        render(message.payload);
+      fetch(broker + "/apps").then(function (response) {
+        if (!response.ok) throw new Error("apps failed");
+        return response.json();
+      }).then(fillApps).catch(function (error) {
+        meta.textContent = error && error.name === "TypeError" ? offlineMessage : registerMessage;
       });
     }());
   </script>

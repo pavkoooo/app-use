@@ -1,23 +1,9 @@
 #!/bin/bash
-# Starts the skill, registers a second listener, presses 1, and checks both streams.
+# Starts the skill, registers Calculator the way the viewer does, and checks the listener.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 "$ROOT/skill/start.sh"
-
-ready=0
-for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
-  if grep -q -e "watching with AXObserver" -e "polling for UI changes" /tmp/app-use-watcher.log 2>/dev/null; then
-    ready=1
-    break
-  fi
-  sleep 0.25
-done
-if [[ "$ready" != "1" ]]; then
-  echo "gui watcher did not become ready" >&2
-  cat /tmp/app-use-watcher.log >&2 || true
-  exit 1
-fi
 
 python3 - "$ROOT" <<'PY'
 import json
@@ -32,14 +18,30 @@ import urllib.request
 base = "http://127.0.0.1:47653"
 received = {"viewer": [], "probe": []}
 stop = threading.Event()
+session = {
+    "steps": [{
+        "id": "attach-gui-reader",
+        "action": "attachPlugin",
+        "capability": "gui.read",
+        "targetApp": "calculator",
+    }],
+    "listener": {
+        "operation": "register",
+        "listener": "viewer",
+        "subjects": ["gui.changed"],
+    },
+}
 
 
 def request(method, path, body=None, timeout=20):
     data = None if body is None else json.dumps(body).encode("utf-8")
     headers = {} if body is None else {"Content-Type": "application/json"}
     req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.status, resp.read()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read()
 
 
 def display_text(payload):
@@ -57,6 +59,28 @@ def display_text(payload):
 
     walk((payload or {}).get("tree") or {})
     return found[0] if found else ""
+
+
+def collect_texts(node, texts):
+    texts.extend(node.get("texts") or [])
+    for child in node.get("children") or []:
+        collect_texts(child, texts)
+
+
+def window_frame(node):
+    frames = []
+
+    def walk(item):
+        frame = item.get("frame") or {}
+        frames.append(frame)
+        for child in item.get("children") or []:
+            walk(child)
+
+    walk(node or {})
+    return any(
+        80 <= frame.get("width", 0) <= 900 and 80 <= frame.get("height", 0) <= 900
+        for frame in frames
+    )
 
 
 def read_sse(path, key):
@@ -96,20 +120,97 @@ def read_sse(path, key):
         received[key].append({"error": str(exc)})
 
 
-status, _ = request("POST", "/listen", {"listener": "probe", "subjects": ["gui.changed"]})
-if status != 200:
-    sys.stderr.write("register failed: %s\n" % status)
+def status_line(path):
+    sock = socket.create_connection(("127.0.0.1", 47653), 5)
+    sock.settimeout(2)
+    sock.sendall(("GET %s HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n" % path).encode("ascii"))
+    buf = b""
+    while b"\r\n" not in buf:
+        chunk = sock.recv(1024)
+        if not chunk:
+            break
+        buf += chunk
+    sock.close()
+    return buf.split(b"\r\n", 1)[0].decode("utf-8", "replace")
+
+
+def wait_watcher():
+    deadline = time.time() + 45
+    log = ""
+    while time.time() < deadline:
+        try:
+            log = open("/tmp/app-use-watcher.log", encoding="utf-8", errors="replace").read()
+        except OSError:
+            log = ""
+        if "Accessibility permission denied" in log:
+            sys.stderr.write(log)
+            sys.exit(2)
+        if "watching with AXObserver" in log or "polling for UI changes" in log:
+            return
+        time.sleep(0.25)
+    sys.stderr.write(log)
+    sys.stderr.write("\ngui watcher did not become ready\n")
     sys.exit(1)
 
+
+def fail(message):
+    sys.stderr.write(message + "\n")
+    sys.exit(1)
+
+
+page_status, page = request("GET", "/")
+if page_status != 200 or "注册".encode("utf-8") not in page or b"attachPlugin" not in page:
+    fail("viewer page is not served with a register button")
+
+apps_status, apps_raw = request("GET", "/apps", timeout=90)
+if apps_status != 200:
+    fail("app list failed: %s %s" % (apps_status, apps_raw[:500]))
+apps = json.loads(apps_raw.decode("utf-8")).get("apps") or []
+if not any(item.get("id") == "calculator" and item.get("name") == "Calculator" for item in apps):
+    fail("Calculator is missing from %s" % json.dumps(apps)[:1000])
+
+snap_status, snap_raw = request("GET", "/snapshot", timeout=20)
+if snap_status != 409:
+    fail("snapshot before register returned %s" % snap_status)
+
+status, body = request("POST", "/session", session, timeout=30)
+if status != 200:
+    fail("register failed: %s %s" % (status, body[:500]))
+status, _ = request("POST", "/unlisten", {"listener": "viewer", "subjects": ["gui.changed"]})
+if status != 200:
+    fail("unlisten failed: %s" % status)
+dropped = status_line("/events?listener=viewer")
+if "404" not in dropped:
+    fail("dropped listener still accepted events: %s" % dropped)
+
+status, body = request("POST", "/session", session, timeout=30)
+if status != 200:
+    fail("re-register failed: %s %s" % (status, body[:500]))
+wait_watcher()
+
+status, _ = request("POST", "/listen", {"listener": "probe", "subjects": ["gui.changed"]})
+if status != 200:
+    fail("probe register failed: %s" % status)
+
 threads = [
-    threading.Thread(target=read_sse, args=("/events", "viewer"), daemon=True),
+    threading.Thread(target=read_sse, args=("/events?listener=viewer", "viewer"), daemon=True),
     threading.Thread(target=read_sse, args=("/events?listener=probe", "probe"), daemon=True),
 ]
 for thread in threads:
     thread.start()
 time.sleep(0.4)
 
-before = json.loads(request("GET", "/snapshot", timeout=40)[1].decode("utf-8"))
+snap_status, snap_raw = request("GET", "/snapshot", timeout=60)
+if snap_status != 200:
+    fail("snapshot failed: %s %s" % (snap_status, snap_raw[:500]))
+before = json.loads(snap_raw.decode("utf-8"))
+if "calculator" not in (before.get("app") or "").lower():
+    fail("snapshot app is %s" % before.get("app"))
+texts = []
+collect_texts(before.get("tree") or {}, texts)
+missing = [label for label in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] if label not in texts]
+if missing or not window_frame(before.get("tree")):
+    fail("snapshot is not the Calculator window (missing %s)" % missing)
 old_display = display_text(before)
 stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
