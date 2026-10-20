@@ -82,6 +82,19 @@
     ul { margin: 0; padding-left: 18px; }
     li { margin: 2px 0; overflow-wrap: anywhere; }
     .empty { margin: 0; color: var(--muted); }
+    .toolbar { display: flex; gap: 12px; align-items: center; margin: 12px 0 0; }
+    button {
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font: 14px/1.2 ui-sans-serif, system-ui, sans-serif;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--accent); }
+    #listener.connected { color: #1b7f4a; }
+    #listener.disconnected { color: #a15c12; }
     @media (max-width: 860px) {
       header, main { padding-left: 16px; padding-right: 16px; }
       main { grid-template-columns: 1fr; }
@@ -92,6 +105,10 @@
   <header>
     <h1>GUI snapshot</h1>
     <p class="meta" id="meta">Loading snapshot…</p>
+    <div class="toolbar">
+      <button id="refresh" type="button">刷新</button>
+      <p class="meta disconnected" id="listener">Listener disconnected</p>
+    </div>
   </header>
   <main>
     <section>
@@ -105,11 +122,12 @@
   </main>
   <script>
     (function () {
+      var broker = "http://127.0.0.1:47653";
       var meta = document.getElementById("meta");
       var stage = document.getElementById("stage");
       var copy = document.getElementById("copy");
       var copyHeading = document.getElementById("copy-heading");
-      var snap = window.SNAPSHOT;
+      var listener = document.getElementById("listener");
 
       function say(text) {
         var p = document.createElement("p");
@@ -118,130 +136,160 @@
         return p;
       }
 
-      if (!snap || !snap.tree) {
-        meta.textContent = "No snapshot loaded. Run skill/start.sh, then reopen this page.";
-        stage.appendChild(say("No frames yet."));
-        copy.appendChild(say("No copy yet."));
-        return;
-      }
-
-      var nodes = [];
-      function walk(node) {
-        nodes.push(node);
-        (node.children || []).forEach(walk);
-      }
-      walk(snap.tree);
-
-      var textCount = 0;
-      nodes.forEach(function (node) {
-        textCount += (node.texts || []).length;
-      });
-      meta.textContent = (snap.app || "Unknown app") + " · " + (snap.capturedAt || "unknown time")
-        + " · " + nodes.length + " nodes · " + textCount + " strings";
-
-      function usable(frame) {
-        return frame && frame.width > 1 && frame.height > 1
-          && frame.x > -2000 && frame.y > -2000
-          && frame.x < 10000 && frame.y < 10000
-          && frame.width < 5000 && frame.height < 5000;
-      }
-      var usableNodes = nodes.filter(function (node) { return usable(node.frame); });
-      var focus = null;
-      var focusArea = 0;
-      usableNodes.forEach(function (node) {
-        var frame = node.frame;
-        if (frame.width >= 900 || frame.height >= 900) return;
-        var area = frame.width * frame.height;
-        if (area > focusArea) {
-          focus = node;
-          focusArea = area;
+      function render(snap) {
+        stage.textContent = "";
+        copy.textContent = "";
+        if (!snap || !snap.tree) {
+          meta.textContent = "No snapshot loaded.";
+          stage.appendChild(say("No frames yet."));
+          copy.appendChild(say("No copy yet."));
+          copyHeading.textContent = "Copy";
+          return;
         }
-      });
-      var focused = [];
-      (function collect(node) {
-        focused.push(node);
-        (node.children || []).forEach(collect);
-      })(focus || snap.tree);
-      var boxes = focused.filter(function (node) { return usable(node.frame); });
 
-      if (!boxes.length) {
-        stage.appendChild(say("The snapshot has no sized frames."));
-      } else {
-        var minX = Infinity;
-        var minY = Infinity;
-        var maxX = -Infinity;
-        var maxY = -Infinity;
-        boxes.forEach(function (node) {
-          var frame = node.frame;
-          minX = Math.min(minX, frame.x);
-          minY = Math.min(minY, frame.y);
-          maxX = Math.max(maxX, frame.x + frame.width);
-          maxY = Math.max(maxY, frame.y + frame.height);
-        });
-        var boundsW = Math.max(1, maxX - minX);
-        var boundsH = Math.max(1, maxY - minY);
-        var maxW = Math.min(400, stage.parentElement.clientWidth - 32);
-        if (!(maxW > 80)) maxW = 360;
-        var scale = Math.min(maxW / boundsW, 520 / boundsH);
-        stage.style.width = Math.ceil(boundsW * scale) + "px";
-        stage.style.height = Math.ceil(boundsH * scale) + "px";
+        var nodes = [];
+        function walk(node) {
+          nodes.push(node);
+          (node.children || []).forEach(walk);
+        }
+        walk(snap.tree);
 
-        boxes.forEach(function (node) {
-          var frame = node.frame;
-          var el = document.createElement("div");
-          el.className = "frame";
-          var width = Math.max(1, frame.width * scale);
-          var height = Math.max(1, frame.height * scale);
-          el.style.left = ((frame.x - minX) * scale) + "px";
-          el.style.top = ((frame.y - minY) * scale) + "px";
-          el.style.width = width + "px";
-          el.style.height = height + "px";
-          var leaf = !node.children || !node.children.length;
-          if (leaf) el.className += " leaf";
-          var label = "";
-          if (leaf) {
-            (node.texts || []).some(function (text) {
-              if (text && text.length <= 8) {
-                label = text;
-                return true;
-              }
-              return false;
-            });
-          }
-          if (label && width >= 14 && height >= 12) {
-            var span = document.createElement("span");
-            span.textContent = label;
-            el.appendChild(span);
-          }
-          stage.appendChild(el);
+        var textCount = 0;
+        nodes.forEach(function (node) {
+          textCount += (node.texts || []).length;
         });
+        meta.textContent = (snap.app || "Unknown app") + " · " + (snap.capturedAt || "unknown time")
+          + " · " + nodes.length + " nodes · " + textCount + " strings";
+
+        function usable(frame) {
+          return frame && frame.width > 1 && frame.height > 1
+            && frame.x > -2000 && frame.y > -2000
+            && frame.x < 10000 && frame.y < 10000
+            && frame.width < 5000 && frame.height < 5000;
+        }
+        var usableNodes = nodes.filter(function (node) { return usable(node.frame); });
+        var focus = null;
+        var focusArea = 0;
+        usableNodes.forEach(function (node) {
+          var frame = node.frame;
+          if (frame.width >= 900 || frame.height >= 900) return;
+          var area = frame.width * frame.height;
+          if (area > focusArea) {
+            focus = node;
+            focusArea = area;
+          }
+        });
+        var focused = [];
+        (function collect(node) {
+          focused.push(node);
+          (node.children || []).forEach(collect);
+        })(focus || snap.tree);
+        var boxes = focused.filter(function (node) { return usable(node.frame); });
+
+        if (!boxes.length) {
+          stage.appendChild(say("The snapshot has no sized frames."));
+        } else {
+          var minX = Infinity;
+          var minY = Infinity;
+          var maxX = -Infinity;
+          var maxY = -Infinity;
+          boxes.forEach(function (node) {
+            var frame = node.frame;
+            minX = Math.min(minX, frame.x);
+            minY = Math.min(minY, frame.y);
+            maxX = Math.max(maxX, frame.x + frame.width);
+            maxY = Math.max(maxY, frame.y + frame.height);
+          });
+          var boundsW = Math.max(1, maxX - minX);
+          var boundsH = Math.max(1, maxY - minY);
+          var maxW = Math.min(400, stage.parentElement.clientWidth - 32);
+          if (!(maxW > 80)) maxW = 360;
+          var scale = Math.min(maxW / boundsW, 520 / boundsH);
+          stage.style.width = Math.ceil(boundsW * scale) + "px";
+          stage.style.height = Math.ceil(boundsH * scale) + "px";
+
+          boxes.forEach(function (node) {
+            var frame = node.frame;
+            var el = document.createElement("div");
+            el.className = "frame";
+            var width = Math.max(1, frame.width * scale);
+            var height = Math.max(1, frame.height * scale);
+            el.style.left = ((frame.x - minX) * scale) + "px";
+            el.style.top = ((frame.y - minY) * scale) + "px";
+            el.style.width = width + "px";
+            el.style.height = height + "px";
+            var leaf = !node.children || !node.children.length;
+            if (leaf) el.className += " leaf";
+            var label = "";
+            if (leaf) {
+              (node.texts || []).some(function (text) {
+                if (text && text.length <= 8) {
+                  label = text;
+                  return true;
+                }
+                return false;
+              });
+            }
+            if (label && width >= 14 && height >= 12) {
+              var span = document.createElement("span");
+              span.textContent = label;
+              el.appendChild(span);
+            }
+            stage.appendChild(el);
+          });
+        }
+
+        var shown = 0;
+        nodes.forEach(function (node) {
+          var texts = node.texts || [];
+          if (!texts.length) return;
+          shown += 1;
+          var card = document.createElement("article");
+          card.className = "node";
+          var role = document.createElement("p");
+          role.className = "role";
+          var frame = node.frame || { x: 0, y: 0, width: 0, height: 0 };
+          role.textContent = (node.role || "unknown")
+            + " · " + Math.round(frame.x) + "," + Math.round(frame.y)
+            + " " + Math.round(frame.width) + "×" + Math.round(frame.height);
+          var list = document.createElement("ul");
+          texts.forEach(function (text) {
+            var item = document.createElement("li");
+            item.textContent = text;
+            list.appendChild(item);
+          });
+          card.appendChild(role);
+          card.appendChild(list);
+          copy.appendChild(card);
+        });
+        copyHeading.textContent = "Copy · " + shown + " nodes";
+        if (!shown) copy.appendChild(say("No text was read."));
       }
 
-      var shown = 0;
-      nodes.forEach(function (node) {
-        var texts = node.texts || [];
-        if (!texts.length) return;
-        shown += 1;
-        var card = document.createElement("article");
-        card.className = "node";
-        var role = document.createElement("p");
-        role.className = "role";
-        var frame = node.frame || { x: 0, y: 0, width: 0, height: 0 };
-        role.textContent = (node.role || "unknown")
-          + " · " + Math.round(frame.x) + "," + Math.round(frame.y)
-          + " " + Math.round(frame.width) + "×" + Math.round(frame.height);
-        var list = document.createElement("ul");
-        texts.forEach(function (text) {
-          var item = document.createElement("li");
-          item.textContent = text;
-          list.appendChild(item);
+      render(window.SNAPSHOT);
+
+      document.getElementById("refresh").addEventListener("click", function () {
+        fetch(broker + "/snapshot").then(function (response) {
+          if (!response.ok) throw new Error("refresh failed");
+          return response.json();
+        }).then(render).catch(function () {
+          meta.textContent = "Refresh failed. Start skill/start.sh and try again.";
         });
-        card.appendChild(role);
-        card.appendChild(list);
-        copy.appendChild(card);
       });
-      copyHeading.textContent = "Copy · " + shown + " nodes";
-      if (!shown) copy.appendChild(say("No text was read."));
+
+      var source = new EventSource(broker + "/events");
+      source.onopen = function () {
+        listener.textContent = "Listener connected";
+        listener.className = "meta connected";
+      };
+      source.onerror = function () {
+        listener.textContent = "Listener disconnected";
+        listener.className = "meta disconnected";
+      };
+      source.addEventListener("gui.changed", function (event) {
+        var message = JSON.parse(event.data);
+        render(message.payload);
+      });
     }());
   </script>
 </body>

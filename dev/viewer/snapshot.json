@@ -1,6 +1,6 @@
 {
   "app" : "Calculator",
-  "capturedAt" : "2026-10-20T15:27:15Z",
+  "capturedAt" : "2026-10-20T15:45:44Z",
   "tree" : {
     "children" : [
       {
@@ -14,13 +14,13 @@
                 "frame" : {
                   "height" : 56,
                   "width" : 203,
-                  "x" : 17,
-                  "y" : 47
+                  "x" : 1182,
+                  "y" : 115
                 },
                 "role" : "AXStaticText",
                 "texts" : [
                   "main display",
-                  "0",
+                  "11111",
                   "text",
                   "_NS:16"
                 ]
@@ -29,8 +29,8 @@
             "frame" : {
               "height" : 132,
               "width" : 232,
-              "x" : 0,
-              "y" : 25
+              "x" : 1165,
+              "y" : 93
             },
             "role" : "AXGroup",
             "texts" : [
@@ -47,8 +47,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 59,
-                  "x" : 56,
-                  "y" : 249
+                  "x" : 1221,
+                  "y" : 317
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -65,8 +65,8 @@
                 "frame" : {
                   "height" : 50,
                   "width" : 61,
-                  "x" : 172,
-                  "y" : 297
+                  "x" : 1337,
+                  "y" : 365
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -84,8 +84,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 59,
-                  "x" : 114,
-                  "y" : 249
+                  "x" : 1279,
+                  "y" : 317
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -102,8 +102,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 59,
-                  "x" : 114,
-                  "y" : 153
+                  "x" : 1279,
+                  "y" : 221
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -120,8 +120,8 @@
                 "frame" : {
                   "height" : 50,
                   "width" : 116,
-                  "x" : -1,
-                  "y" : 297
+                  "x" : 1164,
+                  "y" : 365
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -138,8 +138,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 58,
-                  "x" : -1,
-                  "y" : 249
+                  "x" : 1164,
+                  "y" : 317
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -156,8 +156,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 61,
-                  "x" : 172,
-                  "y" : 201
+                  "x" : 1337,
+                  "y" : 269
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -175,8 +175,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 59,
-                  "x" : 56,
-                  "y" : 201
+                  "x" : 1221,
+                  "y" : 269
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -193,8 +193,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 61,
-                  "x" : 172,
-                  "y" : 153
+                  "x" : 1337,
+                  "y" : 221
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -212,8 +212,8 @@
                 "frame" : {
                   "height" : 50,
                   "width" : 59,
-                  "x" : 114,
-                  "y" : 297
+                  "x" : 1279,
+                  "y" : 365
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -230,8 +230,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 58,
-                  "x" : -1,
-                  "y" : 201
+                  "x" : 1164,
+                  "y" : 269
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -248,8 +248,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 59,
-                  "x" : 114,
-                  "y" : 201
+                  "x" : 1279,
+                  "y" : 269
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -266,8 +266,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 61,
-                  "x" : 172,
-                  "y" : 249
+                  "x" : 1337,
+                  "y" : 317
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -285,8 +285,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 59,
-                  "x" : 56,
-                  "y" : 105
+                  "x" : 1221,
+                  "y" : 173
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -304,8 +304,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 59,
-                  "x" : 56,
-                  "y" : 153
+                  "x" : 1221,
+                  "y" : 221
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -322,8 +322,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 58,
-                  "x" : -1,
-                  "y" : 153
+                  "x" : 1164,
+                  "y" : 221
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -340,14 +340,13 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 58,
-                  "x" : -1,
-                  "y" : 105
+                  "x" : 1164,
+                  "y" : 173
                 },
                 "role" : "AXButton",
                 "texts" : [
-                  "all clear",
                   "clear",
-                  "Clear (Esc); Clear All (Opt-Esc)",
+                  "Clear (Esc)",
                   "button",
                   "_NS:407"
                 ]
@@ -359,8 +358,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 61,
-                  "x" : 172,
-                  "y" : 105
+                  "x" : 1337,
+                  "y" : 173
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -378,8 +377,8 @@
                 "frame" : {
                   "height" : 49,
                   "width" : 59,
-                  "x" : 114,
-                  "y" : 105
+                  "x" : 1279,
+                  "y" : 173
                 },
                 "role" : "AXButton",
                 "texts" : [
@@ -394,8 +393,8 @@
             "frame" : {
               "height" : 241,
               "width" : 236,
-              "x" : -1,
-              "y" : 106
+              "x" : 1164,
+              "y" : 174
             },
             "role" : "AXGroup",
             "texts" : [
@@ -410,8 +409,8 @@
             "frame" : {
               "height" : 16,
               "width" : 14,
-              "x" : 7,
-              "y" : 31
+              "x" : 1172,
+              "y" : 99
             },
             "role" : "AXButton",
             "texts" : [
@@ -425,8 +424,8 @@
             "frame" : {
               "height" : 16,
               "width" : 14,
-              "x" : 47,
-              "y" : 31
+              "x" : 1212,
+              "y" : 99
             },
             "role" : "AXButton",
             "texts" : [
@@ -440,8 +439,8 @@
             "frame" : {
               "height" : 16,
               "width" : 14,
-              "x" : 27,
-              "y" : 31
+              "x" : 1192,
+              "y" : 99
             },
             "role" : "AXButton",
             "texts" : [
@@ -455,8 +454,8 @@
             "frame" : {
               "height" : 16,
               "width" : 10,
-              "x" : 111,
-              "y" : 30
+              "x" : 1276,
+              "y" : 98
             },
             "role" : "AXStaticText",
             "texts" : [
@@ -467,8 +466,8 @@
         "frame" : {
           "height" : 321,
           "width" : 232,
-          "x" : 0,
-          "y" : 25
+          "x" : 1165,
+          "y" : 93
         },
         "role" : "AXWindow",
         "texts" : [

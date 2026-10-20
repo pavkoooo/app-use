@@ -323,14 +323,201 @@ func isoTimestamp() -> String {
     return formatter.string(from: Date())
 }
 
+func captureTree(_ application: AXUIElement) -> Node? {
+    sawPermissionDenied = false
+    emittedNodes = 0
+    let tree = readNode(application, depth: 0)
+    if sawPermissionDenied {
+        denyPermissionAndExit()
+    }
+    if tree.children.isEmpty && tree.texts.isEmpty {
+        return nil
+    }
+    return tree
+}
+
+func waitForTree(_ application: AXUIElement) -> Node? {
+    var latest: Node?
+    let deadline = Date().addingTimeInterval(20)
+    repeat {
+        latest = captureTree(application)
+        if let tree = latest, hasAllDigits(tree) {
+            return tree
+        }
+        Thread.sleep(forTimeInterval: 0.3)
+    } while Date() < deadline
+    return latest
+}
+
+func treeSignature(_ node: Node) -> String {
+    let frame = "\(Int(node.frame.x.rounded())):\(Int(node.frame.y.rounded())):\(Int(node.frame.width.rounded())):\(Int(node.frame.height.rounded()))"
+    let texts = node.texts.joined(separator: "\u{1f}")
+    let children = node.children.map(treeSignature).joined(separator: "\u{1e}")
+    return "\(node.role)\u{1d}\(frame)\u{1d}\(texts)\u{1d}\(children)"
+}
+
+func publish(_ snapshot: Snapshot) {
+    struct Event: Encodable {
+        let subject: String
+        let payload: Snapshot
+    }
+    guard let url = URL(string: "http://127.0.0.1:47653/events") else { return }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.timeoutInterval = 2
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    guard let body = try? encoder.encode(Event(subject: "gui.changed", payload: snapshot)) else { return }
+    request.httpBody = body
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForResource = 2
+    let session = URLSession(configuration: configuration)
+    session.dataTask(with: request) { _, _, error in
+        if let error = error {
+            fputs("publish failed: \(error.localizedDescription)\n", stderr)
+        }
+        session.finishTasksAndInvalidate()
+    }.resume()
+}
+
+let watchNotifications: [String] = [
+    kAXValueChangedNotification as String,
+    kAXFocusedUIElementChangedNotification as String,
+    kAXTitleChangedNotification as String,
+    kAXSelectedChildrenChangedNotification as String,
+    kAXCreatedNotification as String,
+    kAXUIElementDestroyedNotification as String,
+    kAXWindowCreatedNotification as String,
+    kAXLayoutChangedNotification as String,
+    kAXMovedNotification as String,
+    kAXResizedNotification as String,
+]
+
+let axNotificationCallback: AXObserverCallback = { _, _, _, refcon in
+    guard let refcon = refcon else { return }
+    let watcher = Unmanaged<UIWatcher>.fromOpaque(refcon).takeUnretainedValue()
+    watcher.scheduleRefresh()
+}
+
+final class UIWatcher {
+    let application: AXUIElement
+    let outputDir: URL
+    let appName: String
+    var observer: AXObserver?
+    var debounceTimer: CFRunLoopTimer?
+    var lastSignature = ""
+    var refcon: UnsafeMutableRawPointer?
+
+    init(application: AXUIElement, outputDir: URL, appName: String) {
+        self.application = application
+        self.outputDir = outputDir
+        self.appName = appName
+    }
+
+    func start() {
+        refcon = Unmanaged.passUnretained(self).toOpaque()
+        _ = refresh(force: true)
+        if installObserver() {
+            fputs("watching with AXObserver\n", stderr)
+            CFRunLoopRun()
+        } else {
+            fputs("polling for UI changes\n", stderr)
+            poll()
+        }
+    }
+
+    func installObserver() -> Bool {
+        var created: AXObserver?
+        let error = AXObserverCreate(targetPID, axNotificationCallback, &created)
+        guard error == .success, let created = created, let refcon = refcon else {
+            return false
+        }
+        observer = created
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(created), .defaultMode)
+        let added = bindTree(application, depth: 0, observer: created, refcon: refcon)
+        return added > 0
+    }
+
+    @discardableResult
+    func bindTree(_ element: AXUIElement, depth: Int, observer: AXObserver, refcon: UnsafeMutableRawPointer) -> Int {
+        var added = bind(element, observer: observer, refcon: refcon)
+        if depth >= 8 {
+            return added
+        }
+        for child in includedChildren(of: element) {
+            added += bindTree(child, depth: depth + 1, observer: observer, refcon: refcon)
+        }
+        return added
+    }
+
+    func bind(_ element: AXUIElement, observer: AXObserver, refcon: UnsafeMutableRawPointer) -> Int {
+        var added = 0
+        for name in watchNotifications {
+            let result = AXObserverAddNotification(observer, element, name as CFString, refcon)
+            if result == .success {
+                added += 1
+            }
+        }
+        return added
+    }
+
+    func scheduleRefresh() {
+        if let timer = debounceTimer {
+            CFRunLoopTimerInvalidate(timer)
+            debounceTimer = nil
+        }
+        let fire = CFAbsoluteTimeGetCurrent() + 0.08
+        guard let timer = CFRunLoopTimerCreateWithHandler(kCFAllocatorDefault, fire, 0, 0, 0, { _ in
+            _ = self.refresh(force: false)
+        }) else {
+            return
+        }
+        debounceTimer = timer
+        CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, .defaultMode)
+    }
+
+    @discardableResult
+    func refresh(force: Bool) -> Bool {
+        guard let tree = captureTree(application) else { return false }
+        let signature = treeSignature(tree)
+        if !force && signature == lastSignature {
+            return false
+        }
+        lastSignature = signature
+        let snapshot = Snapshot(app: appName, capturedAt: isoTimestamp(), tree: tree)
+        do {
+            try writeSnapshot(snapshot, to: outputDir)
+        } catch {
+            fputs("failed to write snapshot: \(error)\n", stderr)
+        }
+        publish(snapshot)
+        if let observer = observer, let refcon = refcon {
+            _ = bindTree(application, depth: 0, observer: observer, refcon: refcon)
+        }
+        fputs("published gui.changed\n", stderr)
+        return true
+    }
+
+    func poll() {
+        while true {
+            _ = refresh(force: false)
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+    }
+}
+
+var activeWatcher: UIWatcher?
+
 let arguments = CommandLine.arguments
 if arguments.count < 3 {
-    fputs("usage: gui-reader <targetApp> <outputDir>\n", stderr)
+    fputs("usage: gui-reader <targetApp> <outputDir> [watch]\n", stderr)
     exit(64)
 }
 
 let targetApp = arguments[1]
 let outputDir = URL(fileURLWithPath: arguments[2], isDirectory: true)
+let watch = arguments.count >= 4 && arguments[3] == "watch"
 
 _ = NSApplication.shared
 ensureTrusted()
@@ -355,38 +542,21 @@ AXUIElementSetMessagingTimeout(application, 2)
 _ = AXUIElementSetAttributeValue(application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
 _ = AXUIElementSetAttributeValue(application, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
 
-var latest: Node?
-let deadline = Date().addingTimeInterval(20)
-repeat {
-    sawPermissionDenied = false
-    emittedNodes = 0
-    let tree = readNode(application, depth: 0)
-    if sawPermissionDenied {
-        denyPermissionAndExit()
-    }
-    latest = tree
-    if hasAllDigits(tree) {
-        break
-    }
-    Thread.sleep(forTimeInterval: 0.3)
-} while Date() < deadline
-
-guard let tree = latest else {
+guard let tree = waitForTree(application) else {
     fputs("read produced no tree\n", stderr)
     exit(1)
 }
 
-if tree.children.isEmpty && tree.texts.isEmpty {
-    fputs("accessibility tree was empty for \(running.localizedName ?? targetApp)\n", stderr)
-    exit(1)
+let appName = running.localizedName ?? targetApp
+
+if watch {
+    let watcher = UIWatcher(application: application, outputDir: outputDir, appName: appName)
+    activeWatcher = watcher
+    watcher.start()
+    exit(0)
 }
 
-let snapshot = Snapshot(
-    app: running.localizedName ?? targetApp,
-    capturedAt: isoTimestamp(),
-    tree: tree
-)
-
+let snapshot = Snapshot(app: appName, capturedAt: isoTimestamp(), tree: tree)
 do {
     try writeSnapshot(snapshot, to: outputDir)
 } catch {
@@ -394,8 +564,5 @@ do {
     exit(1)
 }
 
-fputs(
-    "read \(snapshot.app): \(countNodes(tree)) nodes, arch \(runningArch())\n",
-    stderr
-)
+fputs("read \(snapshot.app): \(countNodes(tree)) nodes, arch \(runningArch())\n", stderr)
 fputs("wrote \(outputDir.appendingPathComponent("snapshot.json").path)\n", stderr)

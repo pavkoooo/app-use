@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "notifications.schema.json",
+  "title": "Notification bus",
+  "description": "Generic bus messages. Any program may register or unregister as a listener. A gui.changed event carries a GUI snapshot payload.",
+  "$defs": {
+    "subjectName": {
+      "const": "gui.changed"
+    },
+    "listenerName": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name of a listening program."
+    },
+    "subjects": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/subjectName"
+      }
+    },
+    "register": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "listener", "subjects"],
+      "properties": {
+        "operation": { "const": "register" },
+        "listener": { "$ref": "#/$defs/listenerName" },
+        "subjects": { "$ref": "#/$defs/subjects" }
+      }
+    },
+    "unregister": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "listener"],
+      "properties": {
+        "operation": { "const": "unregister" },
+        "listener": { "$ref": "#/$defs/listenerName" },
+        "subjects": { "$ref": "#/$defs/subjects" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "payload"],
+      "properties": {
+        "subject": { "$ref": "#/$defs/subjectName" },
+        "payload": { "$ref": "gui-snapshot.schema.json" }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/register" },
+    { "$ref": "#/$defs/unregister" },
+    { "$ref": "#/$defs/event" }
+  ]
+}

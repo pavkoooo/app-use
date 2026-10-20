@@ -51,6 +51,18 @@ PY
 
 mkdir -p "$OUT_DIR"
 
+MODE="once"
+if [[ "${1:-}" == "watch" ]]; then
+  MODE="watch"
+fi
+
+run_reader() {
+  if [[ "$MODE" == "watch" ]]; then
+    exec "$@" "$TARGET_APP" "$OUT_DIR" watch
+  fi
+  exec "$@" "$TARGET_APP" "$OUT_DIR"
+}
+
 build_x86_64() {
   xcrun --sdk macosx swiftc \
     -target x86_64-apple-macosx13.0 \
@@ -82,15 +94,15 @@ if [[ "$HOST_ARCH" == "arm64" ]]; then
       build_x86_64
     fi
     echo "running gui-reader as x86_64 under Rosetta" >&2
-    exec arch -x86_64 "$BINARY" "$TARGET_APP" "$OUT_DIR"
+    run_reader arch -x86_64 "$BINARY"
   fi
   echo "Rosetta is not installed. Building a host-arch (arm64) binary so the read can run. The plugin package stays macos-intel." >&2
   build_host
-  exec "$BINARY" "$TARGET_APP" "$OUT_DIR"
+  run_reader "$BINARY"
 fi
 
 if [[ "$needs_build" == "1" ]]; then
   build_x86_64
 fi
 echo "running gui-reader as x86_64" >&2
-exec "$BINARY" "$TARGET_APP" "$OUT_DIR"
+run_reader "$BINARY"
