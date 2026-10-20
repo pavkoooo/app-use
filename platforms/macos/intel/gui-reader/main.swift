@@ -33,8 +33,10 @@ let stringAttributeNames: [String] = [
 ]
 
 let maxNodes = 8000
+let ownMenuTitles: Set<String> = ["File", "Edit", "View", "Convert", "Speech", "Window", "Help"]
 var emittedNodes = 0
 var sawPermissionDenied = false
+var targetPID: pid_t = 0
 
 func runningArch() -> String {
     #if arch(x86_64)
@@ -194,6 +196,41 @@ func childrenOf(_ element: AXUIElement) -> [AXUIElement] {
     return []
 }
 
+func elementPID(_ element: AXUIElement) -> pid_t {
+    var pid: pid_t = 0
+    guard AXUIElementGetPid(element, &pid) == .success else { return 0 }
+    return pid
+}
+
+func belongsToTarget(_ element: AXUIElement) -> Bool {
+    let pid = elementPID(element)
+    return pid == 0 || targetPID == 0 || pid == targetPID
+}
+
+func attributeString(_ element: AXUIElement, _ name: String) -> String? {
+    guard let raw = copyAttribute(element, name) else { return nil }
+    return stringsFrom(raw).first
+}
+
+func includedChildren(of element: AXUIElement) -> [AXUIElement] {
+    let children = childrenOf(element).filter(belongsToTarget)
+    let role = roleOf(element)
+    if role == "AXApplication" {
+        return children.filter { child in
+            let childRole = roleOf(child)
+            return childRole == "AXWindow" || childRole == "AXMenuBar"
+        }
+    }
+    if role == "AXMenuBar" {
+        return children.filter { child in
+            guard roleOf(child) == "AXMenuBarItem" else { return false }
+            guard let title = attributeString(child, kAXTitleAttribute as String) else { return false }
+            return ownMenuTitles.contains(title)
+        }
+    }
+    return children
+}
+
 func readNode(_ element: AXUIElement, depth: Int) -> Node {
     let role = roleOf(element)
     let frame = frameOf(element)
@@ -202,7 +239,7 @@ func readNode(_ element: AXUIElement, depth: Int) -> Node {
         return Node(role: role, frame: frame, texts: texts, children: [])
     }
     emittedNodes += 1
-    let children = childrenOf(element).map { readNode($0, depth: depth + 1) }
+    let children = includedChildren(of: element).map { readNode($0, depth: depth + 1) }
     return Node(role: role, frame: frame, texts: texts, children: children)
 }
 
@@ -312,7 +349,8 @@ guard let running = findApp(targetApp, timeout: 15) else {
 
 running.activate(options: [.activateIgnoringOtherApps])
 
-let application = AXUIElementCreateApplication(running.processIdentifier)
+targetPID = running.processIdentifier
+let application = AXUIElementCreateApplication(targetPID)
 AXUIElementSetMessagingTimeout(application, 2)
 _ = AXUIElementSetAttributeValue(application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
 _ = AXUIElementSetAttributeValue(application, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)

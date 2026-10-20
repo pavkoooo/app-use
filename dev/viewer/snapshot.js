@@ -1,0 +1,1945 @@
+window.SNAPSHOT = {
+  "app" : "Calculator",
+  "capturedAt" : "2026-10-20T15:27:15Z",
+  "tree" : {
+    "children" : [
+      {
+        "children" : [
+          {
+            "children" : [
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 56,
+                  "width" : 203,
+                  "x" : 17,
+                  "y" : 47
+                },
+                "role" : "AXStaticText",
+                "texts" : [
+                  "main display",
+                  "0",
+                  "text",
+                  "_NS:16"
+                ]
+              }
+            ],
+            "frame" : {
+              "height" : 132,
+              "width" : 232,
+              "x" : 0,
+              "y" : 25
+            },
+            "role" : "AXGroup",
+            "texts" : [
+              "group",
+              "_NS:11"
+            ]
+          },
+          {
+            "children" : [
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 59,
+                  "x" : 56,
+                  "y" : 249
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "2",
+                  "two",
+                  "button",
+                  "_NS:266"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 50,
+                  "width" : 61,
+                  "x" : 172,
+                  "y" : 297
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "=",
+                  "equals",
+                  "Equal (or press Return)",
+                  "button",
+                  "_NS:276"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 59,
+                  "x" : 114,
+                  "y" : 249
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "3",
+                  "three",
+                  "button",
+                  "_NS:288"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 59,
+                  "x" : 114,
+                  "y" : 153
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "9",
+                  "nine",
+                  "button",
+                  "_NS:296"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 50,
+                  "width" : 116,
+                  "x" : -1,
+                  "y" : 297
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "0",
+                  "zero",
+                  "button",
+                  "_NS:304"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 58,
+                  "x" : -1,
+                  "y" : 249
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "1",
+                  "one",
+                  "button",
+                  "_NS:313"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 61,
+                  "x" : 172,
+                  "y" : 201
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "−",
+                  "subtract",
+                  "Subtract (or press -)",
+                  "button",
+                  "_NS:321"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 59,
+                  "x" : 56,
+                  "y" : 201
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "5",
+                  "five",
+                  "button",
+                  "_NS:331"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 61,
+                  "x" : 172,
+                  "y" : 153
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "×",
+                  "multiply",
+                  "Multiply (or press *)",
+                  "button",
+                  "_NS:339"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 50,
+                  "width" : 59,
+                  "x" : 114,
+                  "y" : 297
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  ".",
+                  "point",
+                  "button",
+                  "_NS:349"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 58,
+                  "x" : -1,
+                  "y" : 201
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "4",
+                  "four",
+                  "button",
+                  "_NS:358"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 59,
+                  "x" : 114,
+                  "y" : 201
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "6",
+                  "six",
+                  "button",
+                  "_NS:366"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 61,
+                  "x" : 172,
+                  "y" : 249
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "+",
+                  "add",
+                  "Add (or press +)",
+                  "button",
+                  "_NS:374"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 59,
+                  "x" : 56,
+                  "y" : 105
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "+\/−",
+                  "negate",
+                  "Negate the displayed value (or press Option-Minus [-])",
+                  "button",
+                  "_NS:383"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 59,
+                  "x" : 56,
+                  "y" : 153
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "8",
+                  "eight",
+                  "button",
+                  "_NS:391"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 58,
+                  "x" : -1,
+                  "y" : 153
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "7",
+                  "seven",
+                  "button",
+                  "_NS:399"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 58,
+                  "x" : -1,
+                  "y" : 105
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "all clear",
+                  "clear",
+                  "Clear (Esc); Clear All (Opt-Esc)",
+                  "button",
+                  "_NS:407"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 61,
+                  "x" : 172,
+                  "y" : 105
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "÷",
+                  "divide",
+                  "Divide (or press \/)",
+                  "button",
+                  "_NS:417"
+                ]
+              },
+              {
+                "children" : [
+
+                ],
+                "frame" : {
+                  "height" : 49,
+                  "width" : 59,
+                  "x" : 114,
+                  "y" : 105
+                },
+                "role" : "AXButton",
+                "texts" : [
+                  "%",
+                  "percent",
+                  "Percent (or press %)",
+                  "button",
+                  "_NS:427"
+                ]
+              }
+            ],
+            "frame" : {
+              "height" : 241,
+              "width" : 236,
+              "x" : -1,
+              "y" : 106
+            },
+            "role" : "AXGroup",
+            "texts" : [
+              "group",
+              "_NS:262"
+            ]
+          },
+          {
+            "children" : [
+
+            ],
+            "frame" : {
+              "height" : 16,
+              "width" : 14,
+              "x" : 7,
+              "y" : 31
+            },
+            "role" : "AXButton",
+            "texts" : [
+              "close button"
+            ]
+          },
+          {
+            "children" : [
+
+            ],
+            "frame" : {
+              "height" : 16,
+              "width" : 14,
+              "x" : 47,
+              "y" : 31
+            },
+            "role" : "AXButton",
+            "texts" : [
+              "zoom button"
+            ]
+          },
+          {
+            "children" : [
+
+            ],
+            "frame" : {
+              "height" : 16,
+              "width" : 14,
+              "x" : 27,
+              "y" : 31
+            },
+            "role" : "AXButton",
+            "texts" : [
+              "minimize button"
+            ]
+          },
+          {
+            "children" : [
+
+            ],
+            "frame" : {
+              "height" : 16,
+              "width" : 10,
+              "x" : 111,
+              "y" : 30
+            },
+            "role" : "AXStaticText",
+            "texts" : [
+              "text"
+            ]
+          }
+        ],
+        "frame" : {
+          "height" : 321,
+          "width" : 232,
+          "x" : 0,
+          "y" : 25
+        },
+        "role" : "AXWindow",
+        "texts" : [
+          "standard window",
+          "_NS:436"
+        ]
+      },
+      {
+        "children" : [
+          {
+            "children" : [
+              {
+                "children" : [
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 182,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Close",
+                      "menu item",
+                      "_NS:247"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 0,
+                      "width" : 0,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Close All",
+                      "menu item",
+                      "closeAll:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 182,
+                      "x" : 0,
+                      "y" : 22
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Save Tape As…",
+                      "menu item",
+                      "_NS:252"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 11,
+                      "width" : 182,
+                      "x" : 0,
+                      "y" : 44
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "menu item",
+                      "_NS:257"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 182,
+                      "x" : 0,
+                      "y" : 55
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Page Setup…",
+                      "menu item",
+                      "_NS:258"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 182,
+                      "x" : 0,
+                      "y" : 77
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Print Tape…",
+                      "menu item",
+                      "_NS:263"
+                    ]
+                  }
+                ],
+                "frame" : {
+                  "height" : 99,
+                  "width" : 182,
+                  "x" : 130,
+                  "y" : 24
+                },
+                "role" : "AXMenu",
+                "texts" : [
+                  "menu",
+                  "_NS:243"
+                ]
+              }
+            ],
+            "frame" : {
+              "height" : 24,
+              "width" : 42,
+              "x" : 130,
+              "y" : 0
+            },
+            "role" : "AXMenuBarItem",
+            "texts" : [
+              "File",
+              "menu bar item",
+              "_NS:239"
+            ]
+          },
+          {
+            "children" : [
+              {
+                "children" : [
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 188,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Undo",
+                      "menu item",
+                      "_NS:276"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 188,
+                      "x" : 0,
+                      "y" : 22
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Redo",
+                      "menu item",
+                      "_NS:281"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 11,
+                      "width" : 188,
+                      "x" : 0,
+                      "y" : 44
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "menu item",
+                      "_NS:286"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 188,
+                      "x" : 0,
+                      "y" : 55
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Cut",
+                      "menu item",
+                      "_NS:287"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 188,
+                      "x" : 0,
+                      "y" : 77
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Copy",
+                      "menu item",
+                      "_NS:292"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 188,
+                      "x" : 0,
+                      "y" : 99
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Paste",
+                      "menu item",
+                      "_NS:297"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 188,
+                      "x" : 0,
+                      "y" : 121
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Clear",
+                      "menu item",
+                      "_NS:302"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 188,
+                      "x" : 0,
+                      "y" : 143
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Select All",
+                      "menu item",
+                      "_NS:306"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 11,
+                      "width" : 188,
+                      "x" : 0,
+                      "y" : 165
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "menu item"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 188,
+                      "x" : 0,
+                      "y" : 176
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Start Dictation…",
+                      "menu item",
+                      "startDictation:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 188,
+                      "x" : 0,
+                      "y" : 198
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Emoji & Symbols",
+                      "menu item",
+                      "orderFrontCharacterPalette:"
+                    ]
+                  }
+                ],
+                "frame" : {
+                  "height" : 220,
+                  "width" : 188,
+                  "x" : 172,
+                  "y" : 24
+                },
+                "role" : "AXMenu",
+                "texts" : [
+                  "menu",
+                  "_NS:272"
+                ]
+              }
+            ],
+            "frame" : {
+              "height" : 24,
+              "width" : 44,
+              "x" : 172,
+              "y" : 0
+            },
+            "role" : "AXMenuBarItem",
+            "texts" : [
+              "Edit",
+              "menu bar item",
+              "_NS:268"
+            ]
+          },
+          {
+            "children" : [
+              {
+                "children" : [
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 257,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Basic",
+                      "menu item",
+                      "menuViewSelectionDidChange:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 257,
+                      "x" : 0,
+                      "y" : 22
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Scientific",
+                      "menu item",
+                      "menuViewSelectionDidChange:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 257,
+                      "x" : 0,
+                      "y" : 44
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Programmer",
+                      "menu item",
+                      "menuViewSelectionDidChange:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 11,
+                      "width" : 257,
+                      "x" : 0,
+                      "y" : 66
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "menu item",
+                      "_NS:319"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 257,
+                      "x" : 0,
+                      "y" : 77
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Show Thousands Separators",
+                      "menu item",
+                      "_NS:320"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 11,
+                      "width" : 257,
+                      "x" : 0,
+                      "y" : 99
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "menu item",
+                      "_NS:324"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 257,
+                      "x" : 0,
+                      "y" : 110
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "RPN Mode",
+                      "menu item",
+                      "_NS:325"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 11,
+                      "width" : 257,
+                      "x" : 0,
+                      "y" : 132
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "menu item",
+                      "_NS:330"
+                    ]
+                  },
+                  {
+                    "children" : [
+                      {
+                        "children" : [
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 0
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "0",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 22
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "1",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 44
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "2",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 66
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "3",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 88
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "4",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 110
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "5",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 132
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "6",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 154
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "7",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 176
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "8",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 198
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "9",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 220
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "10",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 242
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "11",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 264
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "12",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 286
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "13",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 308
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "14",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          },
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 53,
+                              "x" : 0,
+                              "y" : 330
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "15",
+                              "menu item",
+                              "setPrecision:"
+                            ]
+                          }
+                        ],
+                        "frame" : {
+                          "height" : 352,
+                          "width" : 53,
+                          "x" : 17291,
+                          "y" : 17336
+                        },
+                        "role" : "AXMenu",
+                        "texts" : [
+                          "menu",
+                          "_NS:335"
+                        ]
+                      }
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 257,
+                      "x" : 0,
+                      "y" : 143
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Decimal Places",
+                      "menu item",
+                      "_NS:331"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 257,
+                      "x" : 0,
+                      "y" : 165
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Enter Full Screen",
+                      "menu item",
+                      "toggleFullScreen:"
+                    ]
+                  }
+                ],
+                "frame" : {
+                  "height" : 187,
+                  "width" : 257,
+                  "x" : 216,
+                  "y" : 24
+                },
+                "role" : "AXMenu",
+                "texts" : [
+                  "menu",
+                  "_NS:315"
+                ]
+              }
+            ],
+            "frame" : {
+              "height" : 24,
+              "width" : 50,
+              "x" : 216,
+              "y" : 0
+            },
+            "role" : "AXMenuBarItem",
+            "texts" : [
+              "View",
+              "menu bar item",
+              "_NS:311"
+            ]
+          },
+          {
+            "children" : [
+              {
+                "children" : [
+                  {
+                    "children" : [
+                      {
+                        "children" : [
+                          {
+                            "children" : [
+
+                            ],
+                            "frame" : {
+                              "height" : 22,
+                              "width" : 97,
+                              "x" : 0,
+                              "y" : 0
+                            },
+                            "role" : "AXMenuItem",
+                            "texts" : [
+                              "Clear Menu",
+                              "menu item",
+                              "_NS:357"
+                            ]
+                          }
+                        ],
+                        "frame" : {
+                          "height" : 22,
+                          "width" : 97,
+                          "x" : 17291,
+                          "y" : 17336
+                        },
+                        "role" : "AXMenu",
+                        "texts" : [
+                          "menu",
+                          "_NS:352"
+                        ]
+                      }
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Recent Conversions",
+                      "menu item",
+                      "_NS:348"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 11,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 22
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "menu item",
+                      "_NS:361"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 33
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Area…",
+                      "menu item",
+                      "prepareConversion:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 55
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Currency…",
+                      "menu item",
+                      "prepareConversion:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 77
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Energy or Work…",
+                      "menu item",
+                      "prepareConversion:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 99
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Length…",
+                      "menu item",
+                      "prepareConversion:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 121
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Power…",
+                      "menu item",
+                      "prepareConversion:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 143
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Pressure…",
+                      "menu item",
+                      "prepareConversion:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 165
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Speed…",
+                      "menu item",
+                      "prepareConversion:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 187
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Temperature…",
+                      "menu item",
+                      "prepareConversion:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 209
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Time…",
+                      "menu item",
+                      "prepareConversion:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 231
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Volume…",
+                      "menu item",
+                      "prepareConversion:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 194,
+                      "x" : 0,
+                      "y" : 253
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Weights and Masses…",
+                      "menu item",
+                      "prepareConversion:"
+                    ]
+                  }
+                ],
+                "frame" : {
+                  "height" : 275,
+                  "width" : 194,
+                  "x" : 266,
+                  "y" : 24
+                },
+                "role" : "AXMenu",
+                "texts" : [
+                  "menu",
+                  "_NS:344"
+                ]
+              }
+            ],
+            "frame" : {
+              "height" : 24,
+              "width" : 68,
+              "x" : 266,
+              "y" : 0
+            },
+            "role" : "AXMenuBarItem",
+            "texts" : [
+              "Convert",
+              "menu bar item",
+              "_NS:340"
+            ]
+          },
+          {
+            "children" : [
+              {
+                "children" : [
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 162,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Speak Button Pressed",
+                      "menu item",
+                      "_NS:370"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 162,
+                      "x" : 0,
+                      "y" : 22
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Speak Result",
+                      "menu item",
+                      "_NS:374"
+                    ]
+                  }
+                ],
+                "frame" : {
+                  "height" : 44,
+                  "width" : 162,
+                  "x" : 334,
+                  "y" : 24
+                },
+                "role" : "AXMenu",
+                "texts" : [
+                  "menu",
+                  "_NS:366"
+                ]
+              }
+            ],
+            "frame" : {
+              "height" : 24,
+              "width" : 66,
+              "x" : 334,
+              "y" : 0
+            },
+            "role" : "AXMenuBarItem",
+            "texts" : [
+              "Speech",
+              "menu bar item",
+              "_NS:362"
+            ]
+          },
+          {
+            "children" : [
+              {
+                "children" : [
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 302,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Move Window to Left Side of Screen",
+                      "menu item",
+                      "_zoomLeft:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 302,
+                      "x" : 0,
+                      "y" : 22
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Move Window to Right Side of Screen",
+                      "menu item",
+                      "_zoomRight:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 302,
+                      "x" : 0,
+                      "y" : 44
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Replace Tiled Window",
+                      "menu item",
+                      "_changeWindowTileLocation:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 11,
+                      "width" : 302,
+                      "x" : 0,
+                      "y" : 66
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "menu item"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 302,
+                      "x" : 0,
+                      "y" : 77
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Remove Window from Set",
+                      "menu item",
+                      "_removeWindowFromStageManagerSet:"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 302,
+                      "x" : 0,
+                      "y" : 99
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Minimize",
+                      "menu item",
+                      "_NS:386"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 302,
+                      "x" : 0,
+                      "y" : 121
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Zoom",
+                      "menu item",
+                      "_NS:391"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 11,
+                      "width" : 302,
+                      "x" : 0,
+                      "y" : 143
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "menu item",
+                      "_NS:395"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 302,
+                      "x" : 0,
+                      "y" : 154
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Show Paper Tape",
+                      "menu item",
+                      "_NS:396"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 11,
+                      "width" : 302,
+                      "x" : 0,
+                      "y" : 176
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "menu item",
+                      "_NS:401"
+                    ]
+                  },
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 302,
+                      "x" : 0,
+                      "y" : 187
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Bring All to Front",
+                      "menu item",
+                      "_NS:402"
+                    ]
+                  }
+                ],
+                "frame" : {
+                  "height" : 209,
+                  "width" : 302,
+                  "x" : 400,
+                  "y" : 24
+                },
+                "role" : "AXMenu",
+                "texts" : [
+                  "menu",
+                  "_NS:382"
+                ]
+              }
+            ],
+            "frame" : {
+              "height" : 24,
+              "width" : 69,
+              "x" : 400,
+              "y" : 0
+            },
+            "role" : "AXMenuBarItem",
+            "texts" : [
+              "Window",
+              "menu bar item",
+              "_NS:378"
+            ]
+          },
+          {
+            "children" : [
+              {
+                "children" : [
+                  {
+                    "children" : [
+
+                    ],
+                    "frame" : {
+                      "height" : 22,
+                      "width" : 122,
+                      "x" : 0,
+                      "y" : 0
+                    },
+                    "role" : "AXMenuItem",
+                    "texts" : [
+                      "Calculator Help",
+                      "menu item"
+                    ]
+                  }
+                ],
+                "frame" : {
+                  "height" : 22,
+                  "width" : 122,
+                  "x" : 469,
+                  "y" : 24
+                },
+                "role" : "AXMenu",
+                "texts" : [
+                  "menu"
+                ]
+              }
+            ],
+            "frame" : {
+              "height" : 24,
+              "width" : 48,
+              "x" : 469,
+              "y" : 0
+            },
+            "role" : "AXMenuBarItem",
+            "texts" : [
+              "Help",
+              "menu bar item",
+              "_NS:407"
+            ]
+          }
+        ],
+        "frame" : {
+          "height" : 24,
+          "width" : 1440,
+          "x" : 0,
+          "y" : 0
+        },
+        "role" : "AXMenuBar",
+        "texts" : [
+          "menu bar",
+          "_NS:187"
+        ]
+      }
+    ],
+    "frame" : {
+      "height" : 0,
+      "width" : 0,
+      "x" : 0,
+      "y" : 0
+    },
+    "role" : "AXApplication",
+    "texts" : [
+      "Calculator",
+      "application"
+    ]
+  }
+};
