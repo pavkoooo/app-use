@@ -174,8 +174,28 @@
         "unknown": 1
       };
 
+      var fillerWords = {
+        "telephone": 1,
+        "text field": 1,
+        "html content": 1,
+        "content list": 1,
+        "unlabeled image": 1,
+        "to get missing image descriptions, open the context menu.": 1,
+        "this button also has an action to zoom the window": 1,
+        "full screen button": 1
+      };
+
       function isRoleText(text) {
         return roleWords[String(text || "").trim().toLowerCase()] === 1;
+      }
+
+      function isChromeLine(line) {
+        if (!line || isRoleText(line) || line.indexOf("_NS:") === 0) return true;
+        var lower = line.toLowerCase();
+        if (fillerWords[lower]) return true;
+        if (/\.(webp|png|jpe?g|gif|svg)$/i.test(line)) return true;
+        if (/view$/i.test(line) && line.indexOf(" ") < 0) return true;
+        return false;
       }
 
       function visibleLines(node) {
@@ -183,7 +203,7 @@
         (node.texts || []).forEach(function (text) {
           String(text).split(/\r?\n/).forEach(function (part) {
             var line = part.trim();
-            if (!line || isRoleText(line) || line.indexOf("_NS:") === 0) return;
+            if (isChromeLine(line)) return;
             if (lines.indexOf(line) < 0) lines.push(line);
           });
         });

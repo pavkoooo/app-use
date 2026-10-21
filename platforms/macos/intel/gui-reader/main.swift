@@ -504,7 +504,51 @@ func matches(_ app: NSRunningApplication, target: String) -> Bool {
     return false
 }
 
+func applicationURL(named target: String) -> URL? {
+    let needle = target.lowercased()
+    let roots = [
+        "/Applications",
+        "/System/Applications",
+        "/System/Library/CoreServices",
+        (NSHomeDirectory() as NSString).appendingPathComponent("Applications"),
+    ]
+    let manager = FileManager.default
+    for root in roots {
+        guard let items = try? manager.contentsOfDirectory(
+            at: URL(fileURLWithPath: root, isDirectory: true),
+            includingPropertiesForKeys: nil
+        ) else { continue }
+        for url in items where url.pathExtension.caseInsensitiveCompare("app") == .orderedSame {
+            let folder = url.deletingPathExtension().lastPathComponent.lowercased()
+            let display = manager.displayName(atPath: url.path).lowercased()
+            if folder == needle || display == needle {
+                return url
+            }
+        }
+    }
+    return nil
+}
+
 func launch(_ target: String) throws {
+    if let running = NSWorkspace.shared.runningApplications.first(where: { matches($0, target: target) }) {
+        running.activate(options: [.activateIgnoringOtherApps])
+        return
+    }
+    if let url = applicationURL(named: target) {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        let done = DispatchSemaphore(value: 0)
+        var openError: Error?
+        NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
+            openError = error
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + 15)
+        if openError == nil {
+            return
+        }
+        fputs("open \(url.path) failed: \(openError!.localizedDescription)\n", stderr)
+    }
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
     process.arguments = ["-a", openName(for: target)]
