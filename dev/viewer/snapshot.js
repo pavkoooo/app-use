@@ -1,6 +1,6 @@
 window.SNAPSHOT = {
   "app" : "Calculator",
-  "capturedAt" : "2026-10-20T16:11:23Z",
+  "capturedAt" : "2026-10-21T12:06:56Z",
   "tree" : {
     "children" : [
       {
@@ -21,7 +21,7 @@ window.SNAPSHOT = {
                 "role" : "AXStaticText",
                 "texts" : [
                   "main display",
-                  "11",
+                  "1",
                   "text",
                   "_NS:16"
                 ]

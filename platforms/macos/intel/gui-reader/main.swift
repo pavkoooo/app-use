@@ -38,6 +38,7 @@ let ownMenuTitles: Set<String> = ["File", "Edit", "View", "Convert", "Speech", "
 var emittedNodes = 0
 var sawPermissionDenied = false
 var targetPID: pid_t = 0
+var targetAppName = ""
 
 func runningArch() -> String {
     #if arch(x86_64)
@@ -184,17 +185,50 @@ func elements(from raw: CFTypeRef) -> [AXUIElement] {
     return list
 }
 
-func childrenOf(_ element: AXUIElement) -> [AXUIElement] {
-    if let raw = copyAttribute(element, kAXChildrenAttribute as String) {
-        let list = elements(from: raw)
-        if !list.isEmpty {
-            return list
+func elementList(_ raw: CFTypeRef) -> [AXUIElement] {
+    if CFGetTypeID(raw) == AXUIElementGetTypeID() {
+        return [raw as! AXUIElement]
+    }
+    return elements(from: raw)
+}
+
+func deduped(_ groups: [[AXUIElement]]) -> [AXUIElement] {
+    var seen = Set<String>()
+    var list: [AXUIElement] = []
+    for group in groups {
+        for element in group {
+            let key = "\(Unmanaged.passUnretained(element).toOpaque())"
+            if seen.insert(key).inserted {
+                list.append(element)
+            }
         }
     }
-    if let raw = copyAttribute(element, kAXWindowsAttribute as String) {
-        return elements(from: raw)
+    return list
+}
+
+func childrenOf(_ element: AXUIElement) -> [AXUIElement] {
+    let role = roleOf(element)
+    var list: [AXUIElement] = []
+    if let raw = copyAttribute(element, kAXChildrenAttribute as String) {
+        list.append(contentsOf: elements(from: raw))
     }
-    return []
+    if role == "AXApplication" {
+        let roles = Set(list.map(roleOf))
+        if !roles.contains("AXWindow"), let raw = copyAttribute(element, kAXWindowsAttribute as String) {
+            list.append(contentsOf: elements(from: raw))
+        }
+        if !roles.contains("AXMenuBar"), let raw = copyAttribute(element, kAXMenuBarAttribute as String) {
+            list.append(contentsOf: elementList(raw))
+        }
+    }
+    if list.isEmpty && (role == "AXScrollArea" || role == "AXWebArea" || role == "AXOutline" || role == "AXTable" || role == "AXList") {
+        for name in [kAXVisibleChildrenAttribute as String, kAXContentsAttribute as String, kAXRowsAttribute as String] {
+            if let raw = copyAttribute(element, name) {
+                list.append(contentsOf: elementList(raw))
+            }
+        }
+    }
+    return deduped([list])
 }
 
 func elementPID(_ element: AXUIElement) -> pid_t {
@@ -226,7 +260,11 @@ func includedChildren(of element: AXUIElement) -> [AXUIElement] {
         return children.filter { child in
             guard roleOf(child) == "AXMenuBarItem" else { return false }
             guard let title = attributeString(child, kAXTitleAttribute as String) else { return false }
-            return ownMenuTitles.contains(title)
+            if title == "Apple" { return false }
+            if targetAppName.caseInsensitiveCompare("calculator") == .orderedSame {
+                return ownMenuTitles.contains(title)
+            }
+            return true
         }
     }
     return children
@@ -273,23 +311,22 @@ func actionNames(_ element: AXUIElement) -> [String] {
     return names as? [String] ?? []
 }
 
-func performClick(_ element: AXUIElement, nodeID: String) {
-    let press = kAXPressAction as String
-    if actionNames(element).contains(press) {
-        let error = AXUIElementPerformAction(element, press as CFString)
-        if error != .success {
-            fputs("press failed for \(nodeID): \(error.rawValue)\n", stderr)
-            exit(1)
-        }
-        fputs("pressed \(nodeID)\n", stderr)
-        return
-    }
-    let frame = frameOf(element)
-    guard frame.width > 0, frame.height > 0 else {
-        fputs("node \(nodeID) has no press action and no frame\n", stderr)
-        exit(1)
-    }
-    let point = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
+func parentElement(_ element: AXUIElement) -> AXUIElement? {
+    guard let raw = copyAttribute(element, kAXParentAttribute as String) else { return nil }
+    guard CFGetTypeID(raw) == AXUIElementGetTypeID() else { return nil }
+    return (raw as! AXUIElement)
+}
+
+func performAction(_ element: AXUIElement, _ name: String) -> Bool {
+    guard actionNames(element).contains(name) else { return false }
+    return AXUIElementPerformAction(element, name as CFString) == .success
+}
+
+func setSelected(_ element: AXUIElement) -> Bool {
+    return AXUIElementSetAttributeValue(element, kAXSelectedAttribute as CFString, kCFBooleanTrue) == .success
+}
+
+func postClick(_ point: CGPoint, nodeID: String, label: String) {
     guard let source = CGEventSource(stateID: .hidSystemState),
           let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
           let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
@@ -298,7 +335,90 @@ func performClick(_ element: AXUIElement, nodeID: String) {
     }
     down.post(tap: .cghidEventTap)
     up.post(tap: .cghidEventTap)
-    fputs("clicked center of \(nodeID)\n", stderr)
+    fputs("\(label) \(nodeID)\n", stderr)
+}
+
+func clickCenter(_ element: AXUIElement, nodeID: String) {
+    let frame = frameOf(element)
+    guard frame.width > 0, frame.height > 0 else {
+        fputs("node \(nodeID) has no action and no frame\n", stderr)
+        exit(1)
+    }
+    let point = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
+    postClick(point, nodeID: nodeID, label: "clicked center of")
+}
+
+func windowElement(_ element: AXUIElement) -> AXUIElement? {
+    var current: AXUIElement? = element
+    for _ in 0..<20 {
+        guard let node = current else { return nil }
+        if roleOf(node) == "AXWindow" { return node }
+        current = parentElement(node)
+    }
+    return nil
+}
+
+func navigationBackPoint(_ element: AXUIElement) -> CGPoint? {
+    guard roleOf(element) == "AXStaticText", let window = windowElement(element) else { return nil }
+    let text = frameOf(element)
+    let win = frameOf(window)
+    guard text.width > 40, text.height > 8, text.height < 48 else { return nil }
+    let insetX = text.x - win.x
+    let insetY = text.y - win.y
+    guard insetX > 24, insetX < 80, insetY >= 0, insetY < 90 else { return nil }
+    return CGPoint(x: win.x + 16, y: text.y + text.height / 2)
+}
+
+func insideWebArea(_ element: AXUIElement) -> Bool {
+    var current: AXUIElement? = element
+    for _ in 0..<24 {
+        guard let node = current else { return false }
+        let role = roleOf(node)
+        if role == "AXWebArea" { return true }
+        if role == "AXWindow" || role == "AXApplication" { return false }
+        current = parentElement(node)
+    }
+    return false
+}
+
+func performClick(_ element: AXUIElement, nodeID: String) {
+    if insideWebArea(element) {
+        clickCenter(element, nodeID: nodeID)
+        return
+    }
+    let pressable: Set<String> = ["AXButton", "AXRadioButton", "AXCheckBox", "AXLink", "AXMenuItem", "AXPopUpButton", "AXMenuButton"]
+    if performAction(element, kAXPressAction as String) {
+        fputs("pressed \(nodeID)\n", stderr)
+        return
+    }
+    var current = element
+    for _ in 0..<5 {
+        guard let parent = parentElement(current) else { break }
+        let role = roleOf(parent)
+        if role == "AXApplication" || role == "AXWindow" || role == "AXMenuBar" { break }
+        if role == "AXRow" && setSelected(parent) {
+            fputs("selected row for \(nodeID)\n", stderr)
+            return
+        }
+        if pressable.contains(role) && performAction(parent, kAXPressAction as String) {
+            fputs("pressed ancestor for \(nodeID)\n", stderr)
+            return
+        }
+        current = parent
+    }
+    if performAction(element, "AXPick") || performAction(element, kAXConfirmAction as String) {
+        fputs("picked \(nodeID)\n", stderr)
+        return
+    }
+    if performAction(element, kAXShowMenuAction as String) {
+        fputs("showed menu for \(nodeID)\n", stderr)
+        return
+    }
+    if let point = navigationBackPoint(element) {
+        postClick(point, nodeID: nodeID, label: "clicked leading edge of")
+        return
+    }
+    clickCenter(element, nodeID: nodeID)
 }
 
 func countNodes(_ node: Node) -> Int {
@@ -394,15 +514,38 @@ func captureTree(_ application: AXUIElement) -> Node? {
     return tree
 }
 
+func windowControlCount(_ node: Node) -> Int {
+    let roles: Set<String> = [
+        "AXButton", "AXRadioButton", "AXCheckBox", "AXTextField", "AXHeading", "AXLink",
+        "AXRow", "AXCell", "AXPopUpButton", "AXMenuButton", "AXStaticText", "AXWebArea",
+        "AXOutline", "AXImage", "AXList",
+    ]
+    func walk(_ node: Node, inWindow: Bool) -> Int {
+        let inside = inWindow || node.role == "AXWindow"
+        var count = inside && node.role != "AXWindow" && roles.contains(node.role) ? 1 : 0
+        for child in node.children {
+            count += walk(child, inWindow: inside)
+        }
+        return count
+    }
+    return walk(node, inWindow: false)
+}
+
 func waitForTree(_ application: AXUIElement) -> Node? {
     var latest: Node?
-    let deadline = Date().addingTimeInterval(20)
+    let calculator = targetAppName.caseInsensitiveCompare("calculator") == .orderedSame
+    let deadline = Date().addingTimeInterval(40)
     repeat {
         latest = captureTree(application)
-        if let tree = latest, hasAllDigits(tree) {
-            return tree
+        if let tree = latest {
+            if calculator && hasAllDigits(tree) {
+                return tree
+            }
+            if !calculator && windowControlCount(tree) >= 8 {
+                return tree
+            }
         }
-        Thread.sleep(forTimeInterval: 0.3)
+        Thread.sleep(forTimeInterval: 0.25)
     } while Date() < deadline
     return latest
 }
@@ -458,7 +601,7 @@ final class PublishOutcome {
 
 func captureChangedTree(_ application: AXUIElement, previous: String) -> Node? {
     var latest: Node?
-    let deadline = Date().addingTimeInterval(2)
+    let deadline = Date().addingTimeInterval(5)
     repeat {
         if let tree = captureTree(application) {
             latest = tree
@@ -651,6 +794,7 @@ if arguments.count < 3 {
 }
 
 let targetApp = arguments[1]
+targetAppName = targetApp
 let outputDir = URL(fileURLWithPath: arguments[2], isDirectory: true)
 var watch = false
 var performID: String?
@@ -684,7 +828,7 @@ running.activate(options: [.activateIgnoringOtherApps])
 
 targetPID = running.processIdentifier
 let application = AXUIElementCreateApplication(targetPID)
-AXUIElementSetMessagingTimeout(application, 2)
+AXUIElementSetMessagingTimeout(application, 5)
 _ = AXUIElementSetAttributeValue(application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
 _ = AXUIElementSetAttributeValue(application, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
 

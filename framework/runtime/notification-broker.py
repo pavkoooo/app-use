@@ -59,7 +59,7 @@ def read_snapshot():
 
 def perform_click(target, node_id):
     os.makedirs(VIEWER_DIR, exist_ok=True)
-    subprocess.run(reader_argv(target, VIEWER_DIR) + ["perform", node_id], check=True, timeout=45)
+    subprocess.run(reader_argv(target, VIEWER_DIR) + ["perform", node_id], check=True, timeout=70)
 
 
 def list_apps():
