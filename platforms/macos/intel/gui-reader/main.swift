@@ -529,8 +529,29 @@ func applicationURL(named target: String) -> URL? {
     return nil
 }
 
+func windowCount(_ app: NSRunningApplication) -> Int {
+    let element = AXUIElementCreateApplication(app.processIdentifier)
+    AXUIElementSetMessagingTimeout(element, 1)
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXWindowsAttribute as CFString, &value) == .success else {
+        return 0
+    }
+    if let list = value as? [AXUIElement] {
+        return list.count
+    }
+    return 0
+}
+
+func bestRunning(_ target: String) -> NSRunningApplication? {
+    let matched = NSWorkspace.shared.runningApplications.filter { matches($0, target: target) }
+    if matched.count > 1, let windowed = matched.first(where: { windowCount($0) > 0 }) {
+        return windowed
+    }
+    return matched.first { $0.activationPolicy == .regular } ?? matched.first
+}
+
 func launch(_ target: String) throws {
-    if let running = NSWorkspace.shared.runningApplications.first(where: { matches($0, target: target) }) {
+    if let running = bestRunning(target) {
         running.activate(options: [.activateIgnoringOtherApps])
         return
     }
@@ -562,13 +583,17 @@ func launch(_ target: String) throws {
 
 func findApp(_ target: String, timeout: TimeInterval) -> NSRunningApplication? {
     let deadline = Date().addingTimeInterval(timeout)
+    var fallback: NSRunningApplication?
     while Date() < deadline {
-        if let app = NSWorkspace.shared.runningApplications.first(where: { matches($0, target: target) }) {
-            return app
+        if let app = bestRunning(target) {
+            if app.activationPolicy == .regular || windowCount(app) > 0 {
+                return app
+            }
+            fallback = app
         }
         Thread.sleep(forTimeInterval: 0.2)
     }
-    return nil
+    return fallback
 }
 
 func hasAllDigits(_ node: Node) -> Bool {
@@ -748,10 +773,36 @@ func windowControlCount(_ node: Node) -> Int {
     return walk(node, inWindow: false)
 }
 
+func containsRole(_ node: Node, _ role: String) -> Bool {
+    if node.role == role { return true }
+    return node.children.contains { containsRole($0, role) }
+}
+
+func controlCount(_ node: Node) -> Int {
+    let roles: Set<String> = [
+        "AXButton", "AXRadioButton", "AXCheckBox", "AXTextField", "AXHeading", "AXLink",
+        "AXRow", "AXCell", "AXPopUpButton", "AXMenuButton", "AXStaticText", "AXWebArea",
+        "AXOutline", "AXImage", "AXList", "AXToolbar", "AXSplitter",
+    ]
+    let count = roles.contains(node.role) ? 1 : 0
+    return count + node.children.reduce(0) { $0 + controlCount($1) }
+}
+
+func richestWebCount(_ node: Node) -> Int {
+    if node.role == "AXWebArea" {
+        return controlCount(node)
+    }
+    return node.children.map(richestWebCount).max() ?? 0
+}
+
 func waitForTree(_ application: AXUIElement) -> Node? {
     var latest: Node?
+    var lastNodes = -1
+    var stable = 0
+    var richPolls = 0
     let calculator = targetAppName.caseInsensitiveCompare("calculator") == .orderedSame
-    let deadline = Date().addingTimeInterval(40)
+    let started = Date()
+    let deadline = started.addingTimeInterval(40)
     repeat {
         latest = captureTree(application)
         if let tree = latest {
@@ -759,7 +810,31 @@ func waitForTree(_ application: AXUIElement) -> Node? {
                 return tree
             }
             if !calculator && windowControlCount(tree) >= 8 {
-                return tree
+                if !containsRole(tree, "AXWebArea") {
+                    return tree
+                }
+                let nodes = countNodes(tree)
+                if nodes == lastNodes {
+                    stable += 1
+                } else {
+                    stable = 0
+                    lastNodes = nodes
+                }
+                if richestWebCount(tree) >= 15 {
+                    richPolls += 1
+                } else {
+                    richPolls = 0
+                }
+                let waited = Date().timeIntervalSince(started)
+                if richestWebCount(tree) >= 15 && nodes >= 300 {
+                    return tree
+                }
+                if richPolls >= 2 {
+                    return tree
+                }
+                if stable >= 3 && waited >= 6 {
+                    return tree
+                }
             }
         }
         Thread.sleep(forTimeInterval: 0.25)
