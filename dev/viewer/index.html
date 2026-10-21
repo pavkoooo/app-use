@@ -68,13 +68,18 @@
       align-items: center;
       justify-content: center;
       overflow: hidden;
-      padding: 0 2px;
+      padding: 0 3px;
       color: var(--ink);
-      font: 11px/1 ui-sans-serif, system-ui, sans-serif;
+      font: 11px/1.2 ui-sans-serif, system-ui, sans-serif;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
     .node { padding: 10px 0; border-top: 1px solid var(--line); }
     .node:first-of-type { border-top: 0; padding-top: 0; }
+    .copy-title {
+      margin: 0 0 2px;
+      font-weight: 650;
+    }
     .role {
       margin: 0 0 4px;
       color: var(--muted);
@@ -139,6 +144,59 @@
       var offlineMessage = "Open " + pageURL + " to use this page.";
       var registerMessage = "Choose an app and press 注册.";
 
+      var roleWords = {
+        "application": 1,
+        "standard window": 1,
+        "group": 1,
+        "text": 1,
+        "button": 1,
+        "switch": 1,
+        "image": 1,
+        "checkbox": 1,
+        "radio button": 1,
+        "menu item": 1,
+        "menu": 1,
+        "menu bar": 1,
+        "menu bar item": 1,
+        "cell": 1,
+        "outline row": 1,
+        "scroll area": 1,
+        "list": 1,
+        "heading": 1,
+        "link": 1,
+        "pop up button": 1,
+        "menu button": 1,
+        "close button": 1,
+        "zoom button": 1,
+        "minimize button": 1,
+        "toolbar": 1,
+        "tab group": 1,
+        "unknown": 1
+      };
+
+      function isRoleText(text) {
+        return roleWords[String(text || "").trim().toLowerCase()] === 1;
+      }
+
+      function visibleLines(node) {
+        var lines = [];
+        (node.texts || []).forEach(function (text) {
+          String(text).split(/\r?\n/).forEach(function (part) {
+            var line = part.trim();
+            if (!line || isRoleText(line) || line.indexOf("_NS:") === 0) return;
+            if (lines.indexOf(line) < 0) lines.push(line);
+          });
+        });
+        return lines;
+      }
+
+      function frameLabel(lines) {
+        for (var i = 0; i < lines.length; i++) {
+          if (lines[i] !== "0" && lines[i] !== "1") return lines[i];
+        }
+        return lines.length ? lines[0] : "";
+      }
+
       function say(text) {
         var p = document.createElement("p");
         p.className = "empty";
@@ -164,12 +222,14 @@
         }
         walk(snap.tree);
 
-        var textCount = 0;
+        var seenLines = [];
         nodes.forEach(function (node) {
-          textCount += (node.texts || []).length;
+          visibleLines(node).forEach(function (line) {
+            if (seenLines.indexOf(line) < 0) seenLines.push(line);
+          });
         });
         meta.textContent = (snap.app || "Unknown app") + " · " + (snap.capturedAt || "unknown time")
-          + " · " + nodes.length + " nodes · " + textCount + " strings";
+          + " · " + nodes.length + " nodes · " + seenLines.length + " strings";
 
         function usable(frame) {
           return frame && frame.width > 1 && frame.height > 1
@@ -230,16 +290,7 @@
             el.style.height = height + "px";
             var leaf = !node.children || !node.children.length;
             if (leaf) el.className += " leaf";
-            var label = "";
-            if (leaf) {
-              (node.texts || []).some(function (text) {
-                if (text && text.length <= 8) {
-                  label = text;
-                  return true;
-                }
-                return false;
-              });
-            }
+            var label = leaf ? frameLabel(visibleLines(node)) : "";
             if (label && width >= 14 && height >= 12) {
               var span = document.createElement("span");
               span.textContent = label;
@@ -267,28 +318,33 @@
 
         var shown = 0;
         nodes.forEach(function (node) {
-          var texts = node.texts || [];
-          if (!texts.length) return;
+          var lines = visibleLines(node);
+          if (!lines.length) return;
           shown += 1;
           var card = document.createElement("article");
           card.className = "node";
+          var title = document.createElement("p");
+          title.className = "copy-title";
+          title.textContent = lines[0];
           var role = document.createElement("p");
           role.className = "role";
           var frame = node.frame || { x: 0, y: 0, width: 0, height: 0 };
-          role.textContent = (node.role || "unknown")
-            + " · " + Math.round(frame.x) + "," + Math.round(frame.y)
+          role.textContent = Math.round(frame.x) + "," + Math.round(frame.y)
             + " " + Math.round(frame.width) + "×" + Math.round(frame.height);
-          var list = document.createElement("ul");
-          texts.forEach(function (text) {
-            var item = document.createElement("li");
-            item.textContent = text;
-            list.appendChild(item);
-          });
+          card.appendChild(title);
           card.appendChild(role);
-          card.appendChild(list);
+          if (lines.length > 1) {
+            var list = document.createElement("ul");
+            lines.slice(1).forEach(function (text) {
+              var item = document.createElement("li");
+              item.textContent = text;
+              list.appendChild(item);
+            });
+            card.appendChild(list);
+          }
           copy.appendChild(card);
         });
-        copyHeading.textContent = "Copy · " + shown + " nodes";
+        copyHeading.textContent = "Copy · " + shown + " controls";
         if (!shown) copy.appendChild(say("No text was read."));
       }
 
