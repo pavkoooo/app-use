@@ -320,6 +320,68 @@ def run_settings():
     print("ok: System Settings nodes %d; clicked %s; window %s -> %s" % (len(nodes_of(before["tree"])), name, title.split(",")[0], name))
 
 
+CLASH_LABELS = (
+    "Connected",
+    "Rule",
+    "Global",
+    "Direct",
+    "My Profiles",
+    "Proxy",
+    "Board",
+    "Runtime Profile",
+    "Network Check",
+    "App Settings",
+    "Core Settings",
+    "Core Log",
+    "Backup and Sync",
+    "Help",
+    "About",
+)
+
+
+def exact_texts(tree):
+    found = []
+    for node in nodes_of(tree):
+        if str(node.get("role", "")).startswith("AXMenu"):
+            continue
+        for text in plain_texts(node):
+            cleaned = text.strip()
+            if cleaned and cleaned not in found:
+                found.append(cleaned)
+    return found
+
+
+def clash_header(tree):
+    for node in nodes_of(tree):
+        if node.get("role") != "AXStaticText":
+            continue
+        texts = [text.strip() for text in plain_texts(node) if text.strip()]
+        if not texts:
+            continue
+        title = texts[0].splitlines()[0].strip()
+        if title in ("About", "Developer Options") and "Open File Directory" not in texts:
+            return node
+    return None
+
+
+def require_clash_main(tree):
+    texts = exact_texts(tree)
+    missing = [label for label in CLASH_LABELS if label not in texts]
+    if missing:
+        fail("main window is missing visible labels: %s" % ", ".join(missing))
+    if not any(("↑" in text and "↓" in text) for text in texts):
+        fail("main window dropped the traffic values")
+    details = [
+        text for text in texts
+        if text not in CLASH_LABELS and any(unit in text for unit in ("GB", "MB", "KB", "B/s"))
+    ]
+    if len(details) < 2:
+        fail("main window dropped profile or traffic rows")
+    if len(texts) < len(CLASH_LABELS):
+        fail("main window only has the title and one control")
+    return texts
+
+
 def run_clash():
     open_app("Clash Mi")
     target = listed_id(["Clash Mi"])
@@ -327,43 +389,31 @@ def run_clash():
     before = snapshot()
     if "clash mi" not in (before.get("app") or "").lower():
         fail("snapshot app is %s" % before.get("app"))
-    tree = before["tree"]
-    body = blob(tree)
-    if "Clash Mi" not in body:
-        fail("Clash Mi window has no app text")
-    forbidden = ("Rule", "Global", "Direct")
-    about = find_nodes(tree, lambda node: node.get("role") == "AXButton" and "About" in plain_texts(node) and not any(name in plain_texts(node) for name in forbidden))
-    events = []
-    if about:
-        perform(about[0]["id"], events)
-        after = snapshot()
-        if "Version" not in blob(after["tree"]):
-            fail("About did not open")
-        action = "About"
-        proof = "Version"
-    elif "Version" in body:
-        row = find_nodes(tree, lambda node: node.get("role") == "AXStaticText" and "Developer Options" in plain_texts(node))
-        if not row:
-            fail("About page has no Developer Options row")
-        perform(row[0]["id"], events)
-        after = snapshot()
-        if "Open File Directory" not in blob(after["tree"]):
-            fail("Developer Options did not open")
-        action = "Developer Options"
-        proof = "Open File Directory"
-    elif "Open File Directory" in body:
-        header = find_nodes(tree, lambda node: node.get("role") == "AXStaticText" and plain_texts(node)[:1] == ["Developer Options"])
-        if not header:
-            fail("Developer Options page has no title to go back")
-        perform(header[0]["id"], events)
-        after = snapshot()
-        if "Version" not in blob(after["tree"]) and not find_nodes(after["tree"], lambda node: node.get("role") == "AXButton" and "About" in plain_texts(node)):
-            fail("back from Developer Options did not change the page")
-        action = "Developer Options title"
-        proof = "previous page"
-    else:
-        fail("Clash Mi window has no safe tab to click")
-    print("ok: Clash Mi nodes %d; clicked %s; now shows %s" % (len(nodes_of(before["tree"])), action, proof))
+    for _ in range(4):
+        if not [label for label in CLASH_LABELS if label not in exact_texts(before["tree"])]:
+            break
+        header = clash_header(before["tree"])
+        if header is None:
+            break
+        perform(header["id"], [])
+        before = snapshot()
+    texts = require_clash_main(before["tree"])
+    about = find_nodes(
+        before["tree"],
+        lambda node: node.get("role") == "AXButton" and "About" in exact_texts_of(node) and not any(name in exact_texts_of(node) for name in ("Rule", "Global", "Direct")),
+    )
+    if not about:
+        fail("main window has no About button")
+    perform(about[0]["id"], [])
+    after = snapshot()
+    after_texts = exact_texts(after["tree"])
+    if "Version" not in after_texts and not any(text.startswith("Version") for text in after_texts):
+        fail("About did not open")
+    print("ok: Clash Mi nodes %d; %d visible strings kept; clicked About" % (len(nodes_of(before["tree"])), len(texts)))
+
+
+def exact_texts_of(node):
+    return [text.strip() for text in plain_texts(node) if text.strip()]
 
 
 def main():

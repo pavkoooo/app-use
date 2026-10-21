@@ -31,6 +31,8 @@ let stringAttributeNames: [String] = [
     kAXHelpAttribute as String,
     kAXRoleDescriptionAttribute as String,
     kAXIdentifierAttribute as String,
+    kAXPlaceholderValueAttribute as String,
+    kAXSelectedTextAttribute as String,
 ]
 
 let maxNodes = 8000
@@ -143,21 +145,73 @@ func stringsFrom(_ raw: CFTypeRef) -> [String] {
     if typeID == CFNumberGetTypeID() {
         return trimmed((raw as! NSNumber).stringValue).map { [$0] } ?? []
     }
-    if let list = raw as? [String] {
-        return list.compactMap(trimmed)
+    if typeID == CFArrayGetTypeID() {
+        let array = raw as! NSArray
+        var out: [String] = []
+        for index in 0..<array.count {
+            let item = array.object(at: index)
+            if let text = item as? String {
+                out.append(contentsOf: trimmed(text).map { [$0] } ?? [])
+            } else if let text = item as? NSAttributedString {
+                out.append(contentsOf: trimmed(text.string).map { [$0] } ?? [])
+            } else if let text = item as? NSNumber {
+                out.append(contentsOf: trimmed(text.stringValue).map { [$0] } ?? [])
+            }
+        }
+        return out
     }
     return []
 }
 
-func textsOf(_ element: AXUIElement) -> [String] {
-    var texts: [String] = []
-    for name in stringAttributeNames {
-        guard let raw = copyAttribute(element, name) else { continue }
-        for text in stringsFrom(raw) where !texts.contains(text) {
-            texts.append(text)
+func expandLines(_ texts: [String]) -> [String] {
+    var out: [String] = []
+    func add(_ text: String) {
+        guard let text = trimmed(text), !out.contains(text) else { return }
+        out.append(text)
+    }
+    for text in texts {
+        add(text)
+        let normalized = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        guard normalized.contains("\n") else { continue }
+        for line in normalized.split(separator: "\n", omittingEmptySubsequences: true) {
+            add(String(line))
         }
     }
-    return texts
+    return out
+}
+
+func extraStringAttributes(_ element: AXUIElement) -> [String] {
+    var names: CFArray?
+    guard AXUIElementCopyAttributeNames(element, &names) == .success, let names = names as? [String] else {
+        return []
+    }
+    return names.filter { name in
+        if stringAttributeNames.contains(name) { return false }
+        let lower = name.lowercased()
+        return lower.contains("string") || lower.contains("label") || lower.contains("title")
+            || lower.contains("value") || lower.contains("help") || lower.contains("description")
+            || lower.contains("placeholder") || lower.contains("text")
+    }
+}
+
+func textsOf(_ element: AXUIElement) -> [String] {
+    var texts: [String] = []
+    func absorb(_ names: [String]) {
+        for name in names {
+            guard let raw = copyAttribute(element, name) else { continue }
+            for text in stringsFrom(raw) where !texts.contains(text) {
+                texts.append(text)
+            }
+        }
+    }
+    absorb(stringAttributeNames)
+    let role = roleOf(element)
+    if texts.isEmpty && (role == "AXGroup" || role == "AXGeneric" || role == "AXScrollArea" || role == "AXOutline" || role == "AXRow" || role == "AXCell" || role == "AXStaticText" || role == "AXButton") {
+        absorb(extraStringAttributes(element))
+    }
+    return expandLines(texts)
 }
 
 func roleOf(_ element: AXUIElement) -> String {
@@ -501,6 +555,125 @@ func isoTimestamp() -> String {
     return formatter.string(from: Date())
 }
 
+var cachedMappedLines: [String]?
+
+func x86Slice(_ data: Data) -> Data {
+    guard data.count >= 8 else { return data }
+    let magic = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self) }
+    // FAT_CIGAM is stored big-endian on disk; the little-endian load is 0xBEBAFECA.
+    guard magic == 0xBEBAFECA else { return data }
+    let count = Int(data.subdata(in: 4..<8).withUnsafeBytes { CFSwapInt32BigToHost($0.load(as: UInt32.self)) })
+    var cursor = 8
+    for _ in 0..<count {
+        guard cursor + 20 <= data.count else { break }
+        let fields = data.subdata(in: cursor..<(cursor + 20)).withUnsafeBytes { raw -> (UInt32, UInt32, UInt32) in
+            let cpu = CFSwapInt32BigToHost(raw.load(fromByteOffset: 0, as: UInt32.self))
+            let offset = CFSwapInt32BigToHost(raw.load(fromByteOffset: 8, as: UInt32.self))
+            let size = CFSwapInt32BigToHost(raw.load(fromByteOffset: 12, as: UInt32.self))
+            return (cpu, offset, size)
+        }
+        cursor += 20
+        // CPU_TYPE_X86_64
+        if fields.0 == 0x01000007 {
+            let start = Int(fields.1)
+            let end = start + Int(fields.2)
+            guard end <= data.count else { return data }
+            return data.subdata(in: start..<end)
+        }
+    }
+    return data
+}
+
+func flutterImageData() -> Data? {
+    guard targetPID != 0,
+          let app = NSRunningApplication(processIdentifier: targetPID),
+          let bundleURL = app.bundleURL else { return nil }
+    let url = bundleURL.appendingPathComponent("Contents/Frameworks/App.framework/Versions/A/App")
+    guard let data = try? Data(contentsOf: url) else { return nil }
+    return x86Slice(data)
+}
+
+func mappedDartLines() -> [String] {
+    if let cachedMappedLines = cachedMappedLines {
+        return cachedMappedLines
+    }
+    guard let data = flutterImageData() else {
+        cachedMappedLines = []
+        return []
+    }
+    var lines: [String] = []
+    var seen = Set<String>()
+    let bytes = [UInt8](data)
+    var index = 0
+    while index + 24 < bytes.count {
+        if bytes[index + 2] == 0x05 && bytes[index + 3] == 0x00 {
+            let length = Int(bytes[index + 8]) | (Int(bytes[index + 9]) << 8) | (Int(bytes[index + 10]) << 16) | (Int(bytes[index + 11]) << 24)
+            let chars = length >> 1
+            if length & 1 == 0 && chars >= 2 && chars <= 80 && index + 16 + chars <= bytes.count {
+                let raw = bytes[(index + 16)..<(index + 16 + chars)]
+                if raw.allSatisfy({ $0 >= 32 && $0 < 127 }) {
+                    let text = String(bytes: raw, encoding: .utf8) ?? ""
+                    if !text.isEmpty && seen.insert(text).inserted {
+                        lines.append(text)
+                    }
+                    let step = 16 + ((chars + 15) & ~15)
+                    index += max(step, 16)
+                    continue
+                }
+            }
+        }
+        index += 16
+    }
+    cachedMappedLines = lines
+    return lines
+}
+
+func linesInTree(_ node: Node, exact: inout Set<String>, buried: inout Set<String>) {
+    for text in node.texts {
+        exact.insert(text)
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        guard normalized.contains("\n") else { continue }
+        for line in normalized.split(separator: "\n", omittingEmptySubsequences: true) {
+            let clean = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !clean.isEmpty {
+                buried.insert(clean)
+            }
+        }
+    }
+    for child in node.children {
+        linesInTree(child, exact: &exact, buried: &buried)
+    }
+}
+
+func replacingWindowTexts(_ root: Node, texts: [String]) -> Node {
+    let children = root.children.map { child -> Node in
+        guard child.role == "AXWindow" else { return child }
+        return Node(id: child.id, role: child.role, frame: child.frame, texts: texts, children: child.children)
+    }
+    return Node(id: root.id, role: root.role, frame: root.frame, texts: root.texts, children: children)
+}
+
+func mergeMappedLines(_ root: Node) -> Node {
+    let mapped = mappedDartLines()
+    guard !mapped.isEmpty else { return root }
+    var exact = Set<String>()
+    var buried = Set<String>()
+    linesInTree(root, exact: &exact, buried: &buried)
+    let visible = exact.union(buried)
+    var recovered: [String] = []
+    for line in mapped where visible.contains(line) && !exact.contains(line) {
+        recovered.append(line)
+    }
+    guard !recovered.isEmpty, let window = root.children.first(where: { $0.role == "AXWindow" }) else {
+        return root
+    }
+    var texts = window.texts
+    for line in recovered where !texts.contains(line) {
+        texts.append(line)
+    }
+    return replacingWindowTexts(root, texts: texts)
+}
+
 func captureTree(_ application: AXUIElement) -> Node? {
     sawPermissionDenied = false
     emittedNodes = 0
@@ -511,7 +684,7 @@ func captureTree(_ application: AXUIElement) -> Node? {
     if tree.children.isEmpty && tree.texts.isEmpty {
         return nil
     }
-    return tree
+    return mergeMappedLines(tree)
 }
 
 func windowControlCount(_ node: Node) -> Int {
