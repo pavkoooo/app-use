@@ -194,6 +194,7 @@
         var lower = line.toLowerCase();
         if (fillerWords[lower]) return true;
         if (/\.(webp|png|jpe?g|gif|svg)$/i.test(line)) return true;
+        if (lower.indexOf("icon ") === 0) return true;
         if (/view$/i.test(line) && line.indexOf(" ") < 0) return true;
         return false;
       }
@@ -252,66 +253,99 @@
           + " · " + nodes.length + " nodes · " + seenLines.length + " strings";
 
         function usable(frame) {
-          return frame && frame.width > 1 && frame.height > 1
+          return frame && frame.width >= 16 && frame.height >= 12
             && frame.x > -2000 && frame.y > -2000
             && frame.x < 10000 && frame.y < 10000
             && frame.width < 5000 && frame.height < 5000;
         }
-        var usableNodes = nodes.filter(function (node) { return usable(node.frame); });
-        var focus = null;
-        var focusArea = 0;
-        usableNodes.forEach(function (node) {
-          var frame = node.frame;
-          if (frame.width >= 900 || frame.height >= 900) return;
-          var area = frame.width * frame.height;
-          if (area > focusArea) {
-            focus = node;
-            focusArea = area;
+        function appWindow(tree) {
+          var found = null;
+          function walk(node) {
+            if (found) return;
+            if (node.role === "AXWindow" && usable(node.frame)) found = node;
+            (node.children || []).forEach(walk);
           }
+          walk(tree || {});
+          return found;
+        }
+        function insideWindow(win, frame) {
+          var outer = win.frame;
+          return frame.x >= outer.x - 4 && frame.y >= outer.y - 4
+            && frame.x + frame.width <= outer.x + outer.width + 8
+            && frame.y + frame.height <= outer.y + outer.height + 8;
+        }
+        var win = appWindow(snap.tree);
+        var labeled = [];
+        function collectControls(node) {
+          if (String(node.role || "").indexOf("AXMenu") === 0) return;
+          var kids = node.children || [];
+          if (!kids.length && usable(node.frame) && (!win || insideWindow(win, node.frame))) {
+            var label = frameLabel(visibleLines(node));
+            if (label && node.frame.height < (win ? win.frame.height * 0.85 : 2000)) {
+              labeled.push({ node: node, label: label });
+            }
+          }
+          kids.forEach(collectControls);
+        }
+        if (win) (win.children || []).forEach(collectControls);
+        else collectControls(snap.tree);
+        labeled = labeled.filter(function (item) {
+          var frame = item.node.frame;
+          return !labeled.some(function (other) {
+            if (other === item || other.label !== item.label) return false;
+            var bigger = other.node.frame;
+            var encloses = bigger.x <= frame.x + 2 && bigger.y <= frame.y + 2
+              && bigger.x + bigger.width >= frame.x + frame.width - 2
+              && bigger.y + bigger.height >= frame.y + frame.height - 2;
+            return encloses && bigger.width * bigger.height > frame.width * frame.height * 1.2;
+          });
         });
-        var focused = [];
-        (function collect(node) {
-          focused.push(node);
-          (node.children || []).forEach(collect);
-        })(focus || snap.tree);
-        var boxes = focused.filter(function (node) { return usable(node.frame); });
+        var boxes = labeled.map(function (item) { return item.node; });
 
         if (!boxes.length) {
           stage.appendChild(say("The snapshot has no sized frames."));
         } else {
-          var minX = Infinity;
-          var minY = Infinity;
-          var maxX = -Infinity;
-          var maxY = -Infinity;
-          boxes.forEach(function (node) {
-            var frame = node.frame;
-            minX = Math.min(minX, frame.x);
-            minY = Math.min(minY, frame.y);
-            maxX = Math.max(maxX, frame.x + frame.width);
-            maxY = Math.max(maxY, frame.y + frame.height);
-          });
-          var boundsW = Math.max(1, maxX - minX);
-          var boundsH = Math.max(1, maxY - minY);
+          var bounds = win ? win.frame : boxes[0].frame;
+          var minX = bounds.x;
+          var minY = bounds.y;
+          var boundsW = Math.max(1, bounds.width);
+          var boundsH = Math.max(1, bounds.height);
+          if (!win) {
+            minX = Infinity;
+            minY = Infinity;
+            var maxX = -Infinity;
+            var maxY = -Infinity;
+            boxes.forEach(function (node) {
+              var frame = node.frame;
+              minX = Math.min(minX, frame.x);
+              minY = Math.min(minY, frame.y);
+              maxX = Math.max(maxX, frame.x + frame.width);
+              maxY = Math.max(maxY, frame.y + frame.height);
+            });
+            boundsW = Math.max(1, maxX - minX);
+            boundsH = Math.max(1, maxY - minY);
+          }
           var maxW = Math.min(400, stage.parentElement.clientWidth - 32);
           if (!(maxW > 80)) maxW = 360;
           var scale = Math.min(maxW / boundsW, 520 / boundsH);
           stage.style.width = Math.ceil(boundsW * scale) + "px";
           stage.style.height = Math.ceil(boundsH * scale) + "px";
 
+          boxes.sort(function (a, b) {
+            return (b.frame.width * b.frame.height) - (a.frame.width * a.frame.height);
+          });
           boxes.forEach(function (node) {
             var frame = node.frame;
             var el = document.createElement("div");
-            el.className = "frame";
+            el.className = "frame leaf";
             var width = Math.max(1, frame.width * scale);
             var height = Math.max(1, frame.height * scale);
             el.style.left = ((frame.x - minX) * scale) + "px";
             el.style.top = ((frame.y - minY) * scale) + "px";
             el.style.width = width + "px";
             el.style.height = height + "px";
-            var leaf = !node.children || !node.children.length;
-            if (leaf) el.className += " leaf";
-            var label = leaf ? frameLabel(visibleLines(node)) : "";
-            if (label && width >= 14 && height >= 12) {
+            var label = frameLabel(visibleLines(node));
+            if (label && width >= 20 && height >= 12) {
               var span = document.createElement("span");
               span.textContent = label;
               el.appendChild(span);
@@ -337,7 +371,7 @@
         }
 
         var shown = 0;
-        nodes.forEach(function (node) {
+        boxes.forEach(function (node) {
           var lines = visibleLines(node);
           if (!lines.length) return;
           shown += 1;
