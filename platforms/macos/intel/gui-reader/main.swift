@@ -1042,7 +1042,8 @@ func waitForTree(_ application: AXUIElement) -> Node? {
                 if richPolls >= 2 {
                     return tree
                 }
-                if stable >= 3 && waited >= 6 {
+                let thinWeb = richestWebCount(tree) < 15
+                if stable >= 3 && waited >= (thinWeb ? 20 : 6) {
                     return tree
                 }
             }
