@@ -530,7 +530,43 @@ func insideWebArea(_ element: AXUIElement) -> Bool {
     return false
 }
 
+func openAndClickMenuItem(_ element: AXUIElement, nodeID: String) -> Bool {
+    guard roleOf(element) == "AXMenuItem" else { return false }
+    let initial = frameOf(element)
+    if initial.width > 20 && initial.x > 1 && initial.y > 20 {
+        clickCenter(element, nodeID: nodeID)
+        return true
+    }
+    var current: AXUIElement? = element
+    var bar: AXUIElement?
+    for _ in 0..<12 {
+        guard let node = current else { break }
+        if roleOf(node) == "AXMenuBarItem" {
+            bar = node
+            break
+        }
+        current = parentElement(node)
+    }
+    guard let bar = bar else { return false }
+    guard AXUIElementPerformAction(bar, kAXPressAction as CFString) == .success else { return false }
+    let deadline = Date().addingTimeInterval(1)
+    var frame = frameOf(element)
+    while Date() < deadline {
+        frame = frameOf(element)
+        if frame.width > 20 && frame.x > 1 && frame.height > 8 {
+            break
+        }
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+    }
+    guard frame.width > 20, frame.x > 1, frame.height > 8 else { return false }
+    clickCenter(element, nodeID: nodeID)
+    return true
+}
+
 func performClick(_ element: AXUIElement, nodeID: String) {
+    if roleOf(element) == "AXMenuItem" && openAndClickMenuItem(element, nodeID: nodeID) {
+        return
+    }
     if insideWebArea(element) {
         clickCenter(element, nodeID: nodeID)
         return
