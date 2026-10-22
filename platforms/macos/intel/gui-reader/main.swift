@@ -33,6 +33,7 @@ let stringAttributeNames: [String] = [
     kAXIdentifierAttribute as String,
     kAXPlaceholderValueAttribute as String,
     kAXSelectedTextAttribute as String,
+    kAXMenuItemMarkCharAttribute as String,
 ]
 
 let maxNodes = 8000
@@ -41,6 +42,7 @@ var emittedNodes = 0
 var sawPermissionDenied = false
 var targetPID: pid_t = 0
 var targetAppName = ""
+var preservedMenu: (buttonID: String, index: Int, node: Node)?
 
 func runningArch() -> String {
     #if arch(x86_64)
@@ -302,8 +304,11 @@ func attributeString(_ element: AXUIElement, _ name: String) -> String? {
 }
 
 func includedChildren(of element: AXUIElement) -> [AXUIElement] {
-    let children = childrenOf(element).filter(belongsToTarget)
     let role = roleOf(element)
+    let children = childrenOf(element).filter { child in
+        if role == "AXMenu" || role == "AXMenuItem" || role == "AXMenuButton" { return true }
+        return belongsToTarget(child)
+    }
     if role == "AXApplication" {
         let kept = children.filter { child in
             let childRole = roleOf(child)
@@ -378,6 +383,74 @@ func budgetedChildren(_ raw: [AXUIElement], parentID: String) -> [Node] {
         nodes.append(readNode(child, depth: 1, id: nodeID(parentID, index), limit: childLimit))
     }
     return nodes
+}
+
+func preserveOpenMenu(_ element: AXUIElement, buttonID: String) {
+    guard let match = childrenOf(element).enumerated().first(where: { roleOf($0.element) == "AXMenu" }) else {
+        preservedMenu = nil
+        return
+    }
+    emittedNodes = 0
+    let node = readNode(match.element, depth: 1, id: nodeID(buttonID, match.offset))
+    preservedMenu = (buttonID, match.offset, node)
+}
+
+func withID(_ node: Node, id: String) -> Node {
+    Node(
+        id: id,
+        role: node.role,
+        frame: node.frame,
+        texts: node.texts,
+        children: node.children.enumerated().map { withID($0.element, id: nodeID(id, $0.offset)) }
+    )
+}
+
+func mergePreservedMenu(_ tree: Node) -> Node {
+    guard let preserved = preservedMenu else { return tree }
+    preservedMenu = nil
+    func containsMenu(_ node: Node) -> Bool {
+        node.role == "AXMenu" || node.children.contains(where: containsMenu)
+    }
+    func walk(_ node: Node) -> Node {
+        if node.id == preserved.buttonID {
+            if containsMenu(node) { return node }
+            var children = node.children
+            let index = min(preserved.index, children.count)
+            children.insert(withID(preserved.node, id: nodeID(node.id, index)), at: index)
+            return Node(id: node.id, role: node.role, frame: node.frame, texts: node.texts, children: children)
+        }
+        return Node(
+            id: node.id,
+            role: node.role,
+            frame: node.frame,
+            texts: node.texts,
+            children: node.children.map(walk)
+        )
+    }
+    return walk(tree)
+}
+
+func resolveElement(_ application: AXUIElement, id: String) -> AXUIElement? {
+    if let found = findElement(application, id: "0", target: id, depth: 0) {
+        return found
+    }
+    let parts = id.split(separator: "/").map(String.init)
+    var prefix = ""
+    for (index, part) in parts.enumerated() {
+        prefix = index == 0 ? part : prefix + "/" + part
+        guard let element = findElement(application, id: "0", target: prefix, depth: 0) else { break }
+        if roleOf(element) == "AXMenuButton" && !childrenOf(element).contains(where: { roleOf($0) == "AXMenu" && menuItemCount($0) > 0 }) {
+            _ = performAction(element, kAXPressAction as String)
+            if !waitForMenu(on: element, seconds: 1) {
+                clickCenter(element, nodeID: prefix)
+                _ = waitForMenu(on: element, seconds: 1)
+            }
+            if let found = findElement(application, id: "0", target: id, depth: 0) {
+                return found
+            }
+        }
+    }
+    return findElement(application, id: "0", target: id, depth: 0)
 }
 
 func findElement(_ element: AXUIElement, id: String, target: String, depth: Int) -> AXUIElement? {
@@ -563,8 +636,38 @@ func openAndClickMenuItem(_ element: AXUIElement, nodeID: String) -> Bool {
     return true
 }
 
+func menuItemCount(_ element: AXUIElement) -> Int {
+    let nested = childrenOf(element).reduce(0) { $0 + menuItemCount($1) }
+    return nested + (roleOf(element) == "AXMenuItem" ? 1 : 0)
+}
+
+func waitForMenu(on element: AXUIElement, seconds: TimeInterval) -> Bool {
+    let deadline = Date().addingTimeInterval(seconds)
+    while Date() < deadline {
+        let ready = childrenOf(element).contains { roleOf($0) == "AXMenu" && menuItemCount($0) > 0 }
+        if ready { return true }
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+    }
+    return childrenOf(element).contains { roleOf($0) == "AXMenu" && menuItemCount($0) > 0 }
+}
+
 func performClick(_ element: AXUIElement, nodeID: String) {
     if roleOf(element) == "AXMenuItem" && openAndClickMenuItem(element, nodeID: nodeID) {
+        return
+    }
+    if roleOf(element) == "AXMenuButton" && !childrenOf(element).contains(where: { roleOf($0) == "AXMenu" && menuItemCount($0) > 0 }) {
+        _ = performAction(element, kAXPressAction as String)
+        if !waitForMenu(on: element, seconds: 1) {
+            clickCenter(element, nodeID: nodeID)
+            _ = waitForMenu(on: element, seconds: 1)
+        }
+        if childrenOf(element).contains(where: { roleOf($0) == "AXMenu" && menuItemCount($0) > 0 }) {
+            preserveOpenMenu(element, buttonID: nodeID)
+            fputs("opened menu \(nodeID)\n", stderr)
+        } else {
+            preservedMenu = nil
+            fputs("menu stayed closed \(nodeID)\n", stderr)
+        }
         return
     }
     if insideWebArea(element) {
@@ -1102,8 +1205,14 @@ final class PublishOutcome {
     var failed = false
 }
 
+func menuCount(_ node: Node) -> Int {
+    let own = node.role == "AXMenu" ? 1 : 0
+    return own + node.children.reduce(0) { $0 + menuCount($1) }
+}
+
 func captureChangedTree(_ application: AXUIElement, previous: String) -> Node? {
     var latest: Node?
+    var firstChange: Node?
     let deadline = Date().addingTimeInterval(5)
     var changedAt: Date?
     repeat {
@@ -1112,14 +1221,21 @@ func captureChangedTree(_ application: AXUIElement, previous: String) -> Node? {
             if treeSignature(tree) != previous {
                 if changedAt == nil {
                     changedAt = Date()
+                    firstChange = tree
                 }
                 if let changedAt, Date().timeIntervalSince(changedAt) >= 0.6 {
+                    if let firstChange, menuCount(tree) < menuCount(firstChange) {
+                        return firstChange
+                    }
                     return tree
                 }
             }
         }
         Thread.sleep(forTimeInterval: 0.05)
     } while Date() < deadline
+    if let firstChange, let latest, menuCount(latest) < menuCount(firstChange) {
+        return firstChange
+    }
     return latest
 }
 
@@ -1354,7 +1470,7 @@ guard let tree = waitForTree(application) else {
 let appName = running.localizedName ?? targetApp
 
 if let nodeID = performID {
-    guard let element = findElement(application, id: "0", target: nodeID, depth: 0) else {
+    guard let element = resolveElement(application, id: nodeID) else {
         fputs("no node \(nodeID)\n", stderr)
         exit(1)
     }
@@ -1363,10 +1479,11 @@ if let nodeID = performID {
     } else {
         performClick(element, nodeID: nodeID)
     }
-    guard let updated = captureChangedTree(application, previous: treeSignature(tree)) else {
+    guard let changed = captureChangedTree(application, previous: treeSignature(tree)) else {
         fputs("read produced no tree after click\n", stderr)
         exit(1)
     }
+    let updated = mergePreservedMenu(changed)
     let performed = Snapshot(app: appName, capturedAt: isoTimestamp(), tree: updated)
     do {
         try writeSnapshot(performed, to: outputDir)
