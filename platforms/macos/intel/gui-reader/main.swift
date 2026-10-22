@@ -392,6 +392,62 @@ func postClick(_ point: CGPoint, nodeID: String, label: String) {
     fputs("\(label) \(nodeID)\n", stderr)
 }
 
+func raiseWindow(of element: AXUIElement) {
+    var current: AXUIElement? = element
+    for _ in 0..<20 {
+        guard let node = current else { return }
+        if roleOf(node) == "AXWindow" {
+            _ = AXUIElementPerformAction(node, kAXRaiseAction as CFString)
+            _ = AXUIElementSetAttributeValue(node, kAXMainAttribute as CFString, kCFBooleanTrue)
+            _ = AXUIElementSetAttributeValue(node, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+            return
+        }
+        current = parentElement(node)
+    }
+}
+
+func postKey(_ event: CGEvent?) {
+    guard let event = event else { return }
+    if targetPID > 0 {
+        event.postToPid(targetPID)
+    } else {
+        event.post(tap: .cghidEventTap)
+    }
+}
+
+func typeText(_ text: String) {
+    guard let source = CGEventSource(stateID: .hidSystemState) else { return }
+    let select = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
+    let selectUp = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
+    select?.flags = .maskCommand
+    selectUp?.flags = .maskCommand
+    postKey(select)
+    postKey(selectUp)
+    Thread.sleep(forTimeInterval: 0.08)
+    for character in text {
+        var units = Array(String(character).utf16)
+        guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else {
+            continue
+        }
+        down.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
+        up.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
+        postKey(down)
+        postKey(up)
+        Thread.sleep(forTimeInterval: 0.04)
+    }
+}
+
+func performWrite(_ element: AXUIElement, nodeID: String, text: String) {
+    raiseWindow(of: element)
+    Thread.sleep(forTimeInterval: 0.15)
+    clickCenter(element, nodeID: nodeID)
+    Thread.sleep(forTimeInterval: 0.35)
+    _ = AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+    typeText(text)
+    fputs("wrote \(nodeID) (\(text.count) chars)\n", stderr)
+}
+
 func clickCenter(_ element: AXUIElement, nodeID: String) {
     let frame = frameOf(element)
     guard frame.width > 0, frame.height > 0 else {
@@ -560,12 +616,17 @@ func launch(_ target: String) throws {
         configuration.activates = true
         let done = DispatchSemaphore(value: 0)
         var openError: Error?
+        var finished = false
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
             openError = error
+            finished = true
             done.signal()
         }
-        _ = done.wait(timeout: .now() + 15)
-        if openError == nil {
+        let opened = Date().addingTimeInterval(15)
+        while !finished && Date() < opened {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        if finished && openError == nil {
             return
         }
         fputs("open \(url.path) failed: \(openError!.localizedDescription)\n", stderr)
@@ -1081,7 +1142,7 @@ if arguments.count >= 2 && arguments[1] == "apps" {
     listAppsAndExit()
 }
 if arguments.count < 3 {
-    fputs("usage: gui-reader apps | gui-reader <targetApp> <outputDir> [watch | perform <nodeId>]\n", stderr)
+    fputs("usage: gui-reader apps | gui-reader <targetApp> <outputDir> [watch | perform <nodeId> | write <nodeId> <text>]\n", stderr)
     exit(64)
 }
 
@@ -1090,13 +1151,17 @@ targetAppName = targetApp
 let outputDir = URL(fileURLWithPath: arguments[2], isDirectory: true)
 var watch = false
 var performID: String?
+var writeText: String?
 if arguments.count >= 4 {
     if arguments[3] == "watch" && arguments.count == 4 {
         watch = true
     } else if arguments[3] == "perform", arguments.count == 5, !arguments[4].isEmpty {
         performID = arguments[4]
+    } else if arguments[3] == "write", arguments.count == 6, !arguments[4].isEmpty, !arguments[5].isEmpty {
+        performID = arguments[4]
+        writeText = arguments[5]
     } else {
-        fputs("usage: gui-reader apps | gui-reader <targetApp> <outputDir> [watch | perform <nodeId>]\n", stderr)
+        fputs("usage: gui-reader apps | gui-reader <targetApp> <outputDir> [watch | perform <nodeId> | write <nodeId> <text>]\n", stderr)
         exit(64)
     }
 }
@@ -1136,7 +1201,11 @@ if let nodeID = performID {
         fputs("no node \(nodeID)\n", stderr)
         exit(1)
     }
-    performClick(element, nodeID: nodeID)
+    if let text = writeText {
+        performWrite(element, nodeID: nodeID, text: text)
+    } else {
+        performClick(element, nodeID: nodeID)
+    }
     guard let updated = captureChangedTree(application, previous: treeSignature(tree)) else {
         fputs("read produced no tree after click\n", stderr)
         exit(1)
@@ -1149,7 +1218,9 @@ if let nodeID = performID {
         exit(1)
     }
     publish(performed, wait: true)
-    fputs("performed click \(nodeID)\n", stderr)
+    if writeText == nil {
+        fputs("performed click \(nodeID)\n", stderr)
+    }
     exit(0)
 }
 

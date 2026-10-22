@@ -2,19 +2,44 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "gui-perform.schema.json",
   "title": "gui.perform",
-  "description": "Activate one node of the attached application. click uses the action that control exposes: press, pick, show its menu, or set its selected value. nodeId is the stable id from a GUI snapshot.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["action", "nodeId"],
-  "properties": {
-    "action": {
-      "const": "click",
-      "description": "Activate the node with the control's available action."
+  "description": "Act on one node of the attached application. click uses the action that control exposes: press, pick, show its menu, or set its selected value. write replaces the text in a field. nodeId is the stable id from a GUI snapshot.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "nodeId"],
+      "properties": {
+        "action": {
+          "const": "click",
+          "description": "Activate the node with the control's available action."
+        },
+        "nodeId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable id of the node to act on."
+        }
+      }
     },
-    "nodeId": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Stable id of the node to act on."
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "nodeId", "text"],
+      "properties": {
+        "action": {
+          "const": "write",
+          "description": "Replace the field's text."
+        },
+        "nodeId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable id of the field to write."
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Text to place in the field."
+        }
+      }
     }
-  }
+  ]
 }
