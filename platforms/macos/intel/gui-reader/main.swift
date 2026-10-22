@@ -678,6 +678,11 @@ func inDialog(_ element: AXUIElement) -> Bool {
     return false
 }
 
+func prefersPointerClick(_ element: AXUIElement) -> Bool {
+    let ident = attributeString(element, kAXIdentifierAttribute as String) ?? ""
+    return ident.contains("NavigationTab")
+}
+
 func performClick(_ element: AXUIElement, nodeID: String) {
     if roleOf(element) == "AXMenuItem" && openAndClickMenuItem(element, nodeID: nodeID) {
         return
@@ -705,6 +710,10 @@ func performClick(_ element: AXUIElement, nodeID: String) {
         let frame = frameOf(element)
         let point = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
         postClick(point, nodeID: nodeID, label: "clicked dialog button")
+        return
+    }
+    if roleOf(element) == "AXButton" && prefersPointerClick(element) {
+        clickCenter(element, nodeID: nodeID)
         return
     }
     let pressable: Set<String> = ["AXButton", "AXRadioButton", "AXCheckBox", "AXLink", "AXMenuItem", "AXPopUpButton", "AXMenuButton"]
