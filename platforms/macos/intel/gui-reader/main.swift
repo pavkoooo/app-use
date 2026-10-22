@@ -269,7 +269,7 @@ func childrenOf(_ element: AXUIElement) -> [AXUIElement] {
     if role == "AXApplication" {
         let roles = Set(list.map(roleOf))
         if !roles.contains("AXWindow"), let raw = copyAttribute(element, kAXWindowsAttribute as String) {
-            list.append(contentsOf: elements(from: raw))
+            list.append(contentsOf: elements(from: raw).filter { roleOf($0) == "AXWindow" })
         }
         if !roles.contains("AXMenuBar"), let raw = copyAttribute(element, kAXMenuBarAttribute as String) {
             list.append(contentsOf: elementList(raw))
@@ -305,9 +305,17 @@ func includedChildren(of element: AXUIElement) -> [AXUIElement] {
     let children = childrenOf(element).filter(belongsToTarget)
     let role = roleOf(element)
     if role == "AXApplication" {
-        return children.filter { child in
+        let kept = children.filter { child in
             let childRole = roleOf(child)
             return childRole == "AXWindow" || childRole == "AXMenuBar"
+        }
+        if kept.contains(where: { roleOf($0) == "AXWindow" }) {
+            return kept
+        }
+        return children.filter { child in
+            let childRole = roleOf(child)
+            return childRole == "AXWindow" || childRole == "AXMenuBar" || childRole == "AXScrollArea"
+                || childRole == "AXSheet" || childRole == "AXDrawer" || childRole == "AXPopover"
         }
     }
     if role == "AXMenuBar" {
@@ -328,18 +336,48 @@ func nodeID(_ parent: String, _ index: Int) -> String {
     return "\(parent)/\(index)"
 }
 
-func readNode(_ element: AXUIElement, depth: Int, id: String) -> Node {
+func readNode(_ element: AXUIElement, depth: Int, id: String, limit: Int = maxNodes) -> Node {
     let role = roleOf(element)
     let frame = frameOf(element)
     let texts = textsOf(element)
-    if sawPermissionDenied || depth >= 40 || emittedNodes >= maxNodes {
+    if sawPermissionDenied || depth >= 40 || emittedNodes >= limit {
         return Node(id: id, role: role, frame: frame, texts: texts, children: [])
     }
     emittedNodes += 1
-    let children = includedChildren(of: element).enumerated().map { index, child in
-        readNode(child, depth: depth + 1, id: nodeID(id, index))
+    let raw = includedChildren(of: element)
+    if role == "AXApplication" {
+        let children = budgetedChildren(raw, parentID: id)
+        return Node(id: id, role: role, frame: frame, texts: texts, children: children)
+    }
+    let children = raw.enumerated().map { index, child in
+        readNode(child, depth: depth + 1, id: nodeID(id, index), limit: limit)
     }
     return Node(id: id, role: role, frame: frame, texts: texts, children: children)
+}
+
+func budgetedChildren(_ raw: [AXUIElement], parentID: String) -> [Node] {
+    var unreadMenus = raw.filter { roleOf($0) == "AXMenuBar" }.count
+    var unreadWindows = raw.filter { roleOf($0) == "AXWindow" }.count
+    var nodes: [Node] = []
+    for (index, child) in raw.enumerated() {
+        let childRole = roleOf(child)
+        let allowance: Int
+        if childRole == "AXMenuBar" {
+            unreadMenus = max(0, unreadMenus - 1)
+            allowance = min(2000, max(1, maxNodes - emittedNodes))
+        } else if childRole == "AXWindow" {
+            unreadWindows = max(0, unreadWindows - 1)
+            let menuHold = min(2000 * max(unreadMenus, 0), maxNodes / 4)
+            let shares = max(unreadWindows + 1, 1)
+            let remaining = max(1, maxNodes - emittedNodes - menuHold)
+            allowance = max(1, remaining / shares)
+        } else {
+            allowance = min(400, max(1, maxNodes - emittedNodes))
+        }
+        let childLimit = min(maxNodes, emittedNodes + allowance)
+        nodes.append(readNode(child, depth: 1, id: nodeID(parentID, index), limit: childLimit))
+    }
+    return nodes
 }
 
 func findElement(_ element: AXUIElement, id: String, target: String, depth: Int) -> AXUIElement? {
@@ -476,7 +514,8 @@ func navigationBackPoint(_ element: AXUIElement) -> CGPoint? {
     let insetX = text.x - win.x
     let insetY = text.y - win.y
     guard insetX > 24, insetX < 80, insetY >= 0, insetY < 90 else { return nil }
-    return CGPoint(x: win.x + 16, y: text.y + text.height / 2)
+    let x = min(max(text.x - 22, win.x + 8), text.x - 4)
+    return CGPoint(x: x, y: text.y + text.height / 2)
 }
 
 func insideWebArea(_ element: AXUIElement) -> Bool {
@@ -608,8 +647,10 @@ func bestRunning(_ target: String) -> NSRunningApplication? {
 
 func launch(_ target: String) throws {
     if let running = bestRunning(target) {
-        running.activate(options: [.activateIgnoringOtherApps])
-        return
+        if running.activationPolicy == .regular || windowCount(running) > 0 {
+            running.activate(options: [.activateIgnoringOtherApps])
+            return
+        }
     }
     if let url = applicationURL(named: target) {
         let configuration = NSWorkspace.OpenConfiguration()
@@ -642,15 +683,82 @@ func launch(_ target: String) throws {
     }
 }
 
+func standardWindows(_ application: AXUIElement) -> [AXUIElement] {
+    guard let raw = copyAttribute(application, kAXWindowsAttribute as String) else { return [] }
+    return elements(from: raw).filter { roleOf($0) == "AXWindow" }
+}
+
+func waitForStandardWindow(_ application: AXUIElement, seconds: TimeInterval) -> Bool {
+    let deadline = Date().addingTimeInterval(seconds)
+    while Date() < deadline {
+        if !standardWindows(application).isEmpty {
+            return true
+        }
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.2))
+    }
+    return !standardWindows(application).isEmpty
+}
+
+func sendReopen(pid: pid_t) {
+    let target = NSAppleEventDescriptor(processIdentifier: pid)
+    let event = NSAppleEventDescriptor(
+        eventClass: AEEventClass(kCoreEventClass),
+        eventID: AEEventID(kAEReopenApplication),
+        targetDescriptor: target,
+        returnID: AEReturnID(kAutoGenerateReturnID),
+        transactionID: AETransactionID(kAnyTransactionID)
+    )
+    do {
+        _ = try event.sendEvent(options: [.noReply], timeout: 2)
+    } catch {
+        return
+    }
+}
+
+func pressDockItem(named name: String) -> Bool {
+    guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else {
+        return false
+    }
+    let element = AXUIElementCreateApplication(dock.processIdentifier)
+    AXUIElementSetMessagingTimeout(element, 2)
+    guard let raw = copyAttribute(element, kAXChildrenAttribute as String) else { return false }
+    for list in elements(from: raw) {
+        guard let childrenRaw = copyAttribute(list, kAXChildrenAttribute as String) else { continue }
+        for child in elements(from: childrenRaw) {
+            guard attributeString(child, kAXTitleAttribute as String) == name else { continue }
+            return AXUIElementPerformAction(child, kAXPressAction as CFString) == .success
+        }
+    }
+    return false
+}
+
+func revealStandardWindow(_ application: AXUIElement, pid: pid_t) {
+    if !standardWindows(application).isEmpty {
+        return
+    }
+    sendReopen(pid: pid)
+    if waitForStandardWindow(application, seconds: 2) {
+        return
+    }
+    if let name = NSRunningApplication(processIdentifier: pid)?.localizedName, pressDockItem(named: name) {
+        _ = waitForStandardWindow(application, seconds: 3)
+    }
+}
+
 func findApp(_ target: String, timeout: TimeInterval) -> NSRunningApplication? {
-    let deadline = Date().addingTimeInterval(timeout)
+    var deadline = Date().addingTimeInterval(timeout)
     var fallback: NSRunningApplication?
+    var extended = false
     while Date() < deadline {
         if let app = bestRunning(target) {
             if app.activationPolicy == .regular || windowCount(app) > 0 {
                 return app
             }
             fallback = app
+            if !extended {
+                extended = true
+                deadline = Date().addingTimeInterval(70)
+            }
         }
         Thread.sleep(forTimeInterval: 0.2)
     }
@@ -1188,6 +1296,7 @@ let application = AXUIElementCreateApplication(targetPID)
 AXUIElementSetMessagingTimeout(application, 5)
 _ = AXUIElementSetAttributeValue(application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
 _ = AXUIElementSetAttributeValue(application, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+revealStandardWindow(application, pid: targetPID)
 
 guard let tree = waitForTree(application) else {
     fputs("read produced no tree\n", stderr)
