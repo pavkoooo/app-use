@@ -603,35 +603,45 @@ func insideWebArea(_ element: AXUIElement) -> Bool {
     return false
 }
 
-func openAndClickMenuItem(_ element: AXUIElement, nodeID: String) -> Bool {
-    guard roleOf(element) == "AXMenuItem" else { return false }
-    let initial = frameOf(element)
-    if initial.width > 20 && initial.x > 1 && initial.y > 20 {
-        clickCenter(element, nodeID: nodeID)
-        return true
-    }
+func owningMenu(_ element: AXUIElement) -> AXUIElement? {
     var current: AXUIElement? = element
-    var bar: AXUIElement?
-    for _ in 0..<12 {
-        guard let node = current else { break }
-        if roleOf(node) == "AXMenuBarItem" {
-            bar = node
-            break
-        }
+    for _ in 0..<8 {
+        guard let node = current else { return nil }
+        if roleOf(node) == "AXMenu" { return node }
         current = parentElement(node)
     }
-    guard let bar = bar else { return false }
-    guard AXUIElementPerformAction(bar, kAXPressAction as CFString) == .success else { return false }
-    let deadline = Date().addingTimeInterval(1)
-    var frame = frameOf(element)
-    while Date() < deadline {
-        frame = frameOf(element)
-        if frame.width > 20 && frame.x > 1 && frame.height > 8 {
-            break
-        }
-        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+    return nil
+}
+
+func menuIsShowing(_ element: AXUIElement) -> Bool {
+    if let menu = owningMenu(element), let raw = copyAttribute(menu, kAXVisibleChildrenAttribute as String) {
+        return !elements(from: raw).isEmpty
     }
-    guard frame.width > 20, frame.x > 1, frame.height > 8 else { return false }
+    let frame = frameOf(element)
+    return frame.width > 20 && frame.x > 1 && frame.y > 20
+}
+
+func openAndClickMenuItem(_ element: AXUIElement, nodeID: String) -> Bool {
+    guard roleOf(element) == "AXMenuItem" else { return false }
+    if !menuIsShowing(element) {
+        var current: AXUIElement? = element
+        var bar: AXUIElement?
+        for _ in 0..<12 {
+            guard let node = current else { break }
+            if roleOf(node) == "AXMenuBarItem" {
+                bar = node
+                break
+            }
+            current = parentElement(node)
+        }
+        guard let bar = bar else { return false }
+        guard AXUIElementPerformAction(bar, kAXPressAction as CFString) == .success else { return false }
+        let deadline = Date().addingTimeInterval(1)
+        while Date() < deadline && !menuIsShowing(element) {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        guard menuIsShowing(element) else { return false }
+    }
     clickCenter(element, nodeID: nodeID)
     return true
 }
