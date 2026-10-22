@@ -661,6 +661,23 @@ func waitForMenu(on element: AXUIElement, seconds: TimeInterval) -> Bool {
     return childrenOf(element).contains { roleOf($0) == "AXMenu" && menuItemCount($0) > 0 }
 }
 
+func inDialog(_ element: AXUIElement) -> Bool {
+    var current: AXUIElement? = element
+    for _ in 0..<10 {
+        guard let node = current else { return false }
+        let role = roleOf(node)
+        if role == "AXSheet" { return true }
+        if role == "AXWindow" {
+            let subrole = attributeString(node, kAXSubroleAttribute as String) ?? ""
+            if subrole.contains("Dialog") { return true }
+            let description = (attributeString(node, kAXRoleDescriptionAttribute as String) ?? "").lowercased()
+            return description.contains("dialog") || description.contains("对话框")
+        }
+        current = parentElement(node)
+    }
+    return false
+}
+
 func performClick(_ element: AXUIElement, nodeID: String) {
     if roleOf(element) == "AXMenuItem" && openAndClickMenuItem(element, nodeID: nodeID) {
         return
@@ -682,6 +699,12 @@ func performClick(_ element: AXUIElement, nodeID: String) {
     }
     if insideWebArea(element) {
         clickCenter(element, nodeID: nodeID)
+        return
+    }
+    if roleOf(element) == "AXButton" && inDialog(element) {
+        let frame = frameOf(element)
+        let point = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
+        postClick(point, nodeID: nodeID, label: "clicked dialog button")
         return
     }
     let pressable: Set<String> = ["AXButton", "AXRadioButton", "AXCheckBox", "AXLink", "AXMenuItem", "AXPopUpButton", "AXMenuButton"]
