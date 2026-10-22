@@ -545,8 +545,13 @@ func performClick(_ element: AXUIElement, nodeID: String) {
         guard let parent = parentElement(current) else { break }
         let role = roleOf(parent)
         if role == "AXApplication" || role == "AXWindow" || role == "AXMenuBar" { break }
-        if role == "AXRow" && setSelected(parent) {
-            fputs("selected row for \(nodeID)\n", stderr)
+        if role == "AXRow" {
+            _ = setSelected(parent)
+            if performAction(parent, kAXPressAction as String) {
+                fputs("pressed row for \(nodeID)\n", stderr)
+                return
+            }
+            clickCenter(element, nodeID: nodeID)
             return
         }
         if pressable.contains(role) && performAction(parent, kAXPressAction as String) {
@@ -1063,11 +1068,17 @@ final class PublishOutcome {
 func captureChangedTree(_ application: AXUIElement, previous: String) -> Node? {
     var latest: Node?
     let deadline = Date().addingTimeInterval(5)
+    var changedAt: Date?
     repeat {
         if let tree = captureTree(application) {
             latest = tree
             if treeSignature(tree) != previous {
-                return tree
+                if changedAt == nil {
+                    changedAt = Date()
+                }
+                if let changedAt, Date().timeIntervalSince(changedAt) >= 0.6 {
+                    return tree
+                }
             }
         }
         Thread.sleep(forTimeInterval: 0.05)
