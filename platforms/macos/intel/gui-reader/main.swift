@@ -705,6 +705,24 @@ func menuIsShowing(_ element: AXUIElement) -> Bool {
     return menuFrameIsOnScreen(element)
 }
 
+func submenuParents(of element: AXUIElement) -> [AXUIElement] {
+    // Menu items between the leaf and the menu bar; each holds a submenu that
+    // must open before the leaf's frame reflects where it is on screen now.
+    var holders: [AXUIElement] = []
+    var current: AXUIElement? = parentElement(element)
+    while let node = current {
+        let role = roleOf(node)
+        if role == "AXMenuBarItem" || role == "AXMenuBar" || role == "AXApplication" {
+            break
+        }
+        if role == "AXMenuItem" {
+            holders.append(node)
+        }
+        current = parentElement(node)
+    }
+    return holders.reversed()
+}
+
 func openAndClickMenuItem(_ element: AXUIElement, nodeID: String) -> Bool {
     guard roleOf(element) == "AXMenuItem" else { return false }
     if !menuIsShowing(element) {
@@ -720,6 +738,27 @@ func openAndClickMenuItem(_ element: AXUIElement, nodeID: String) -> Bool {
         }
         guard let bar = bar else { return false }
         guard performAction(bar, kAXPressAction as String) else { return false }
+        // Open every intermediate submenu. A closed submenu still reports a
+        // degenerate frame, so a nested leaf can look "showing" inside the top
+        // popup while its real position is elsewhere.
+        for holder in submenuParents(of: element) {
+            // AXPress opens the submenu the same programmatic way the menu bar
+            // opens, which keeps the tracking session in the state where
+            // synthetic clicks still reach items. Pointer clicks on the holder
+            // enter a drag session that swallows later synthetic clicks.
+            _ = performAction(holder, kAXPressAction as String)
+            var settle = Date().addingTimeInterval(0.3)
+            while Date() < settle {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            }
+            if !menuIsShowing(element) {
+                clickCenter(holder, nodeID: nodeID)
+                settle = Date().addingTimeInterval(0.3)
+                while Date() < settle {
+                    RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+                }
+            }
+        }
         let deadline = Date().addingTimeInterval(1)
         while Date() < deadline && !menuIsShowing(element) {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
