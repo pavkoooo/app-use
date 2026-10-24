@@ -84,6 +84,16 @@ func ensureTrusted() {
     }
 }
 
+var boundedMessaging = Set<String>()
+
+func boundMessaging(_ element: AXUIElement) {
+    let key = "\(Unmanaged.passUnretained(element).toOpaque())"
+    if !boundedMessaging.insert(key).inserted {
+        return
+    }
+    AXUIElementSetMessagingTimeout(element, 2)
+}
+
 func copyAttribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
     var value: CFTypeRef?
     let error = AXUIElementCopyAttributeValue(element, name as CFString, &value)
@@ -263,6 +273,7 @@ func deduped(_ groups: [[AXUIElement]]) -> [AXUIElement] {
 }
 
 func childrenOf(_ element: AXUIElement) -> [AXUIElement] {
+    boundMessaging(element)
     let role = roleOf(element)
     var list: [AXUIElement] = []
     if let raw = copyAttribute(element, kAXChildrenAttribute as String) {
@@ -284,7 +295,11 @@ func childrenOf(_ element: AXUIElement) -> [AXUIElement] {
             }
         }
     }
-    return deduped([list])
+    let unique = deduped([list])
+    for child in unique {
+        boundMessaging(child)
+    }
+    return unique
 }
 
 func elementPID(_ element: AXUIElement) -> pid_t {
@@ -962,6 +977,13 @@ func revealStandardWindow(_ application: AXUIElement, pid: pid_t) {
     if waitForStandardWindow(application, seconds: 2) {
         return
     }
+    // A second Dock click on an app that just opened closes it again.
+    // Give a fresh launch time to draw its window before pressing the Dock.
+    let launched = NSRunningApplication(processIdentifier: pid)?.launchDate ?? Date.distantPast
+    if Date().timeIntervalSince(launched) < 12 {
+        _ = waitForStandardWindow(application, seconds: 6)
+        return
+    }
     if let name = NSRunningApplication(processIdentifier: pid)?.localizedName, pressDockItem(named: name) {
         _ = waitForStandardWindow(application, seconds: 3)
     }
@@ -979,7 +1001,10 @@ func findApp(_ target: String, timeout: TimeInterval) -> NSRunningApplication? {
             fallback = app
             if !extended {
                 extended = true
-                deadline = Date().addingTimeInterval(70)
+                // A windowless helper never becomes the GUI. Keep waiting only briefly,
+                // then read the process we already have. A real window still arrives
+                // through the normal poll before this shorter deadline.
+                deadline = Date().addingTimeInterval(8)
             }
         }
         Thread.sleep(forTimeInterval: 0.2)
@@ -1135,6 +1160,7 @@ func mergeMappedLines(_ root: Node) -> Node {
 }
 
 func captureTree(_ application: AXUIElement) -> Node? {
+    boundedMessaging.removeAll()
     sawPermissionDenied = false
     emittedNodes = 0
     let tree = readNode(application, depth: 0, id: "0")
@@ -1195,6 +1221,9 @@ func waitForTree(_ application: AXUIElement) -> Node? {
     let started = Date()
     let deadline = started.addingTimeInterval(40)
     repeat {
+        if NSRunningApplication(processIdentifier: targetPID)?.isTerminated != false {
+            return latest
+        }
         latest = captureTree(application)
         if let tree = latest {
             if calculator && hasAllDigits(tree) {
