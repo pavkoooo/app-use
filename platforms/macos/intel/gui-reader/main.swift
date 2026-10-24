@@ -657,24 +657,44 @@ func menuFrameIsOnScreen(_ element: AXUIElement) -> Bool {
     return frame.width > 20 && frame.height > 8 && frame.x > 1 && frame.y > 20 && frame.x < 4000 && frame.y < 1600
 }
 
-func menuPopupIsOpen(_ menu: AXUIElement) -> Bool {
-    let frame = frameOf(menu)
-    return frame.width > 20 && frame.height > 40 && frame.x > 1 && frame.y > 0 && frame.x < 4000 && frame.y < 1600
+func windowListInt(_ value: Any?) -> Int? {
+    if let number = value as? NSNumber { return number.intValue }
+    if let number = value as? Int { return number }
+    return nil
+}
+
+func popupMenuContains(_ point: CGPoint) -> Bool {
+    guard targetPID > 0,
+          let raw = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [NSDictionary] else {
+        return false
+    }
+    let popupLevel = Int(CGWindowLevelForKey(.popUpMenuWindow))
+    for window in raw {
+        let pid = windowListInt(window[kCGWindowOwnerPID as NSString]) ?? -1
+        let layer = windowListInt(window[kCGWindowLayer as NSString]) ?? -1
+        guard pid == Int(targetPID), layer == popupLevel else { continue }
+        guard let bounds = window[kCGWindowBounds as NSString] as? NSDictionary else { continue }
+        func coord(_ key: String) -> CGFloat {
+            (bounds[key] as? NSNumber)?.doubleValue ?? -1
+        }
+        let rect = CGRect(x: coord("X"), y: coord("Y"), width: coord("Width"), height: coord("Height"))
+        if rect.width > 20, rect.height > 20, rect.contains(point) {
+            return true
+        }
+    }
+    return false
 }
 
 func menuIsShowing(_ element: AXUIElement) -> Bool {
-    let onScreen = menuFrameIsOnScreen(element)
-    if roleOf(element) == "AXMenuItem", let menu = owningMenu(element), menuPopupIsOpen(menu), onScreen {
-        return true
+    if roleOf(element) == "AXMenuItem" {
+        let frame = frameOf(element)
+        let center = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
+        return popupMenuContains(center)
     }
     if let menu = owningMenu(element), let raw = copyAttribute(menu, kAXVisibleChildrenAttribute as String) {
-        let visible = !elements(from: raw).isEmpty
-        if roleOf(element) == "AXMenuItem" {
-            return visible && onScreen
-        }
-        return visible
+        return !elements(from: raw).isEmpty
     }
-    return onScreen
+    return menuFrameIsOnScreen(element)
 }
 
 func openAndClickMenuItem(_ element: AXUIElement, nodeID: String) -> Bool {
