@@ -2045,7 +2045,7 @@ if arguments.count >= 4 {
         watch = true
     } else if arguments[3] == "perform", arguments.count == 5, !arguments[4].isEmpty {
         performID = arguments[4]
-    } else if arguments[3] == "write", arguments.count == 6, !arguments[4].isEmpty, !arguments[5].isEmpty {
+    } else if arguments[3] == "write", arguments.count == 6, !arguments[4].isEmpty {
         performID = arguments[4]
         writeText = arguments[5]
     } else {
@@ -2104,6 +2104,9 @@ if let nodeID = performID {
     } else {
         performClick(element, nodeID: nodeID)
     }
+    // Give toggled controls a moment to update before the follow-up read,
+    // so a state that flips right after a click is not captured stale.
+    Thread.sleep(forTimeInterval: 0.25)
     guard let changed = captureChangedTree(application, previous: treeSignature(tree)) else {
         fputs("read produced no tree after click\n", stderr)
         exit(1)
