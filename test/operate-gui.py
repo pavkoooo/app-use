@@ -321,15 +321,10 @@ def run_settings():
 
 
 CLASH_LABELS = (
-    "Connected",
     "Rule",
     "Global",
     "Direct",
     "My Profiles",
-    "Proxy",
-    "Board",
-    "Runtime Profile",
-    "Network Check",
     "App Settings",
     "Core Settings",
     "Core Log",
@@ -351,15 +346,23 @@ def exact_texts(tree):
     return found
 
 
-def clash_header(tree):
+def clash_page_title(tree):
+    # A subpage shows a wide title in the top-left corner of the window;
+    # clicking its leading edge returns to the main window.
+    window = window_node(tree)
+    if window is None:
+        return None
+    win = window.get("frame") or {}
     for node in nodes_of(tree):
         if node.get("role") != "AXStaticText":
             continue
-        texts = [text.strip() for text in plain_texts(node) if text.strip()]
-        if not texts:
+        frame = node.get("frame") or {}
+        width, height = frame.get("width", 0), frame.get("height", 0)
+        if width < 180 or not 20 <= height <= 32:
             continue
-        title = texts[0].splitlines()[0].strip()
-        if title in ("About", "Developer Options") and "Open File Directory" not in texts:
+        inset_x = frame.get("x", 0) - win.get("x", 0)
+        inset_y = frame.get("y", 0) - win.get("y", 0)
+        if 24 < inset_x < 90 and 0 <= inset_y < 90:
             return node
     return None
 
@@ -392,10 +395,10 @@ def run_clash():
     for _ in range(4):
         if not [label for label in CLASH_LABELS if label not in exact_texts(before["tree"])]:
             break
-        header = clash_header(before["tree"])
-        if header is None:
+        title = clash_page_title(before["tree"])
+        if title is None:
             break
-        perform(header["id"], [])
+        perform(title["id"], [])
         before = snapshot()
     texts = require_clash_main(before["tree"])
     about = find_nodes(
@@ -409,7 +412,15 @@ def run_clash():
     after_texts = exact_texts(after["tree"])
     if "Version" not in after_texts and not any(text.startswith("Version") for text in after_texts):
         fail("About did not open")
-    print("ok: Clash Mi nodes %d; %d visible strings kept; clicked About" % (len(nodes_of(before["tree"])), len(texts)))
+    back = clash_page_title(after["tree"])
+    if back is None:
+        fail("About page has no title to return with")
+    perform(back["id"], [])
+    home = snapshot()
+    home_missing = [label for label in CLASH_LABELS if label not in exact_texts(home["tree"])]
+    if home_missing:
+        fail("did not return to the main window: missing %s" % ", ".join(home_missing))
+    print("ok: Clash Mi nodes %d; %d visible strings kept; About opens and returns" % (len(nodes_of(before["tree"])), len(texts)))
 
 
 def exact_texts_of(node):

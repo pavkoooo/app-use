@@ -646,13 +646,27 @@ func windowElement(_ element: AXUIElement) -> AXUIElement? {
     return nil
 }
 
+func inTextList(_ element: AXUIElement) -> Bool {
+    // A page title stands alone in its row; menu and popup options stack with
+    // sibling texts below them. Only the title is a back affordance.
+    guard let parent = parentElement(element) else { return false }
+    let mine = frameOf(element)
+    let selfKey = "\(Unmanaged.passUnretained(element).toOpaque())"
+    var stacked = 0
+    for child in childrenOf(parent) {
+        guard "\(Unmanaged.passUnretained(child).toOpaque())" != selfKey else { continue }
+        guard roleOf(child) == "AXStaticText" else { continue }
+        let frame = frameOf(child)
+        if abs(frame.x - mine.x) < 12, frame.y > mine.y, frame.y - mine.y < 120 {
+            stacked += 1
+        }
+    }
+    return stacked >= 2
+}
+
 func navigationBackPoint(_ element: AXUIElement) -> CGPoint? {
     guard roleOf(element) == "AXStaticText", let window = windowElement(element) else { return nil }
-    // Only a label that names going back is a back button; popup rows and
-    // plain labels in the same corner must take a normal center click.
-    let label = (textsOf(element).first ?? "")
-    let backish = ["返回", "后退", "Back", "‹", "←", "<"]
-    guard backish.contains(where: { label.contains($0) }) else { return nil }
+    guard !inTextList(element) else { return nil }
     let text = frameOf(element)
     let win = frameOf(window)
     guard text.width > 40, text.height > 8, text.height < 48 else { return nil }
