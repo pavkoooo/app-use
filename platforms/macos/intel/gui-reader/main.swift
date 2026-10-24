@@ -91,10 +91,7 @@ func boundMessaging(_ element: AXUIElement, inWeb: Bool = false) {
     if !boundedMessaging.insert(key).inserted {
         return
     }
-    // Embedded web content answers from a separate WebKit process and the
-    // first cross-process answers can take seconds; a short timeout makes
-    // whole subtrees read as empty.
-    AXUIElementSetMessagingTimeout(element, inWeb ? 10 : 2)
+    AXUIElementSetMessagingTimeout(element, 2)
 }
 
 func copyAttribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
@@ -294,16 +291,6 @@ func childrenOf(_ element: AXUIElement, inWeb: Bool = false) -> [AXUIElement] {
         }
         if !roles.contains("AXMenuBar"), let raw = copyAttribute(element, kAXMenuBarAttribute as String) {
             list.append(contentsOf: elementList(raw))
-        }
-    }
-    if list.isEmpty {
-        // An empty first answer can be a cross-process timeout: embedded web
-        // content answers from a separate WebKit process and the first replies
-        // can take seconds. One patient retry catches it, while genuinely empty
-        // containers still answer fast.
-        AXUIElementSetMessagingTimeout(element, 10)
-        if let raw = copyAttribute(element, kAXChildrenAttribute as String) {
-            list.append(contentsOf: elements(from: raw))
         }
     }
     if list.isEmpty && (role == "AXScrollArea" || role == "AXWebArea" || role == "AXOutline" || role == "AXTable" || role == "AXList") {
@@ -884,6 +871,15 @@ func performClick(_ element: AXUIElement, nodeID: String) {
     if roleOf(element) == "AXButton" && prefersPointerClick(element) {
         clickCenter(element, nodeID: nodeID)
         return
+    }
+    if roleOf(element) == "AXMenuItem" {
+        let frame = frameOf(element)
+        if frame.width <= 0 && frame.height <= 0 {
+            // NSMenu exposes hidden alternates (disabled twins) with no frame;
+            // pressing one reports success while changing nothing.
+            fputs("menu item \(nodeID) is a hidden alternate with no frame\n", stderr)
+            exit(1)
+        }
     }
     let pressable: Set<String> = ["AXButton", "AXRadioButton", "AXCheckBox", "AXLink", "AXMenuItem", "AXPopUpButton", "AXMenuButton"]
     if performAction(element, kAXPressAction as String) {
