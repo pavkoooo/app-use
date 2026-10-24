@@ -574,6 +574,14 @@ func typeText(_ text: String) {
     postKey(select)
     postKey(selectUp)
     Thread.sleep(forTimeInterval: 0.08)
+    if text.isEmpty {
+        // Select-all followed by one delete clears whatever held the focus.
+        let del = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: true)
+        let delUp = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: false)
+        postKey(del)
+        postKey(delUp)
+        return
+    }
     for character in text {
         var units = Array(String(character).utf16)
         guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
