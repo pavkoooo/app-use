@@ -815,6 +815,58 @@ func bestRunning(_ target: String) -> NSRunningApplication? {
     return matched.first { $0.activationPolicy == .regular } ?? matched.first
 }
 
+func runOpen(_ arguments: [String], label: String) -> Bool {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+    process.arguments = arguments
+    do {
+        try process.run()
+    } catch {
+        fputs("open \(label) failed: \(error)\n", stderr)
+        return false
+    }
+    let deadline = Date().addingTimeInterval(15)
+    while process.isRunning && Date() < deadline {
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+    }
+    if process.isRunning {
+        process.terminate()
+        fputs("open \(label) timed out\n", stderr)
+        return false
+    }
+    if process.terminationStatus != 0 {
+        fputs("open \(label) failed (\(process.terminationStatus))\n", stderr)
+        return false
+    }
+    return true
+}
+
+func applicationURL(named target: String) -> URL? {
+    let needle = target.lowercased()
+    let compact = needle.replacingOccurrences(of: " ", with: "")
+    let roots = [
+        "/Applications",
+        "/System/Applications",
+        "/System/Library/CoreServices",
+        (NSHomeDirectory() as NSString).appendingPathComponent("Applications"),
+    ]
+    let manager = FileManager.default
+    for root in roots {
+        guard let items = try? manager.contentsOfDirectory(
+            at: URL(fileURLWithPath: root, isDirectory: true),
+            includingPropertiesForKeys: nil
+        ) else { continue }
+        for url in items where url.pathExtension.caseInsensitiveCompare("app") == .orderedSame {
+            let folder = url.deletingPathExtension().lastPathComponent.lowercased()
+            let display = manager.displayName(atPath: url.path).lowercased()
+            if folder == needle || display == needle || folder == compact {
+                return url
+            }
+        }
+    }
+    return nil
+}
+
 func launch(_ target: String) throws {
     if let running = bestRunning(target) {
         if running.activationPolicy == .regular || windowCount(running) > 0 {
@@ -823,23 +875,13 @@ func launch(_ target: String) throws {
         }
     }
     let name = openName(for: target)
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    process.arguments = ["-a", name]
-    try process.run()
-    let deadline = Date().addingTimeInterval(15)
-    while process.isRunning && Date() < deadline {
-        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+    if runOpen(["-a", name], label: "-a \(name)") {
+        return
     }
-    if process.isRunning {
-        process.terminate()
-        fputs("open -a \(name) timed out\n", stderr)
-        exit(1)
+    if let url = applicationURL(named: target), runOpen([url.path], label: url.lastPathComponent) {
+        return
     }
-    if process.terminationStatus != 0 {
-        fputs("open -a \(name) failed (\(process.terminationStatus))\n", stderr)
-        exit(1)
-    }
+    exit(1)
 }
 
 func standardWindows(_ application: AXUIElement) -> [AXUIElement] {
