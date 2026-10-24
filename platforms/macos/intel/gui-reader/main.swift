@@ -785,31 +785,6 @@ func matches(_ app: NSRunningApplication, target: String) -> Bool {
     return false
 }
 
-func applicationURL(named target: String) -> URL? {
-    let needle = target.lowercased()
-    let roots = [
-        "/Applications",
-        "/System/Applications",
-        "/System/Library/CoreServices",
-        (NSHomeDirectory() as NSString).appendingPathComponent("Applications"),
-    ]
-    let manager = FileManager.default
-    for root in roots {
-        guard let items = try? manager.contentsOfDirectory(
-            at: URL(fileURLWithPath: root, isDirectory: true),
-            includingPropertiesForKeys: nil
-        ) else { continue }
-        for url in items where url.pathExtension.caseInsensitiveCompare("app") == .orderedSame {
-            let folder = url.deletingPathExtension().lastPathComponent.lowercased()
-            let display = manager.displayName(atPath: url.path).lowercased()
-            if folder == needle || display == needle {
-                return url
-            }
-        }
-    }
-    return nil
-}
-
 func windowCount(_ app: NSRunningApplication) -> Int {
     let element = AXUIElementCreateApplication(app.processIdentifier)
     AXUIElementSetMessagingTimeout(element, 1)
@@ -838,33 +813,22 @@ func launch(_ target: String) throws {
             return
         }
     }
-    if let url = applicationURL(named: target) {
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        let done = DispatchSemaphore(value: 0)
-        var openError: Error?
-        var finished = false
-        NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, error in
-            openError = error
-            finished = true
-            done.signal()
-        }
-        let opened = Date().addingTimeInterval(15)
-        while !finished && Date() < opened {
-            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
-        }
-        if finished && openError == nil {
-            return
-        }
-        fputs("open \(url.path) failed: \(openError!.localizedDescription)\n", stderr)
-    }
+    let name = openName(for: target)
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    process.arguments = ["-a", openName(for: target)]
+    process.arguments = ["-a", name]
     try process.run()
-    process.waitUntilExit()
+    let deadline = Date().addingTimeInterval(15)
+    while process.isRunning && Date() < deadline {
+        RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+    }
+    if process.isRunning {
+        process.terminate()
+        fputs("open -a \(name) timed out\n", stderr)
+        exit(1)
+    }
     if process.terminationStatus != 0 {
-        fputs("open -a \(openName(for: target)) failed (\(process.terminationStatus))\n", stderr)
+        fputs("open -a \(name) failed (\(process.terminationStatus))\n", stderr)
         exit(1)
     }
 }
@@ -1477,6 +1441,15 @@ if arguments.count >= 4 {
     } else {
         fputs("usage: gui-reader apps | gui-reader <targetApp> <outputDir> [watch | perform <nodeId> | write <nodeId> <text>]\n", stderr)
         exit(64)
+    }
+}
+
+if !watch {
+    Thread.detachNewThread {
+        Thread.sleep(forTimeInterval: 75)
+        fputs("timed out after 75s\n", stderr)
+        fflush(stderr)
+        _exit(75)
     }
 }
 
