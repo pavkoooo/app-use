@@ -1516,13 +1516,479 @@ func listAppsAndExit() -> Never {
     exit(0)
 }
 
+let usageChromeWords: Set<String> = [
+    "button", "text", "group", "window", "standard window", "application", "image",
+    "checkbox", "check box", "radio button", "text field", "secure text field",
+    "scroll area", "toolbar", "menu", "menu item", "menu bar", "menu bar item",
+    "pop up button", "menu button", "close button", "zoom button", "minimize button",
+    "full screen button", "list", "heading", "link", "cell", "static text", "dialog",
+    "increment arrow button", "decrement arrow button", "increment page button",
+    "decrement page button",
+]
+
+func usageChrome(_ text: String) -> Bool {
+    let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if value.isEmpty || value.hasPrefix("_NS:") || value.count > 80 {
+        return true
+    }
+    return usageChromeWords.contains(value.lowercased())
+}
+
+func usageAppName(_ pid: pid_t) -> String? {
+    guard pid > 0,
+          let name = NSRunningApplication(processIdentifier: pid)?.localizedName?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+          !name.isEmpty else {
+        return nil
+    }
+    return name
+}
+
+func usageSecure(_ element: AXUIElement) -> Bool {
+    let subrole = attributeString(element, kAXSubroleAttribute as String) ?? ""
+    if subrole == "AXSecureTextField" {
+        return true
+    }
+    return roleOf(element) == "AXTextField" && subrole.lowercased().contains("secure")
+}
+
+func usageLabel(_ element: AXUIElement) -> String {
+    let names = [
+        kAXTitleAttribute as String,
+        kAXDescriptionAttribute as String,
+        kAXHelpAttribute as String,
+        kAXPlaceholderValueAttribute as String,
+    ]
+    for name in names {
+        guard let text = attributeString(element, name), !usageChrome(text) else { continue }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return ""
+}
+
+func usageWords(_ element: AXUIElement) -> String {
+    if usageSecure(element) {
+        return usageLabel(element)
+    }
+    let texts = textsOf(element)
+    if let digit = texts.first(where: { text in
+        text.count == 1 && text.rangeOfCharacter(from: CharacterSet.decimalDigits) != nil && !usageChrome(text)
+    }) {
+        return digit
+    }
+    return texts.first(where: { !usageChrome($0) }) ?? ""
+}
+
+func usageClimb(_ element: AXUIElement) -> String {
+    var current: AXUIElement? = element
+    for _ in 0..<6 {
+        guard let node = current else { break }
+        AXUIElementSetMessagingTimeout(node, 1)
+        let words = usageWords(node)
+        if !words.isEmpty {
+            return words
+        }
+        current = parentElement(node)
+    }
+    return ""
+}
+
+func usageElement(at point: CGPoint, root: AXUIElement) -> AXUIElement? {
+    var found: AXUIElement?
+    guard AXUIElementCopyElementAtPosition(root, Float(point.x), Float(point.y), &found) == .success else {
+        return nil
+    }
+    return found
+}
+
+func usageFrontWindow(_ application: AXUIElement) -> AXUIElement? {
+    for name in [kAXFocusedWindowAttribute as String, kAXMainWindowAttribute as String] {
+        guard let raw = copyAttribute(application, name), CFGetTypeID(raw) == AXUIElementGetTypeID() else { continue }
+        return (raw as! AXUIElement)
+    }
+    return standardWindows(application).first
+}
+
+func usageWindowLabels(_ application: AXUIElement, deadline: Date) -> [String] {
+    AXUIElementSetMessagingTimeout(application, 1)
+    guard Date() < deadline, let window = usageFrontWindow(application) else { return [] }
+    var labels: [String] = []
+    var seen = Set<String>()
+    func add(_ text: String) {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if usageChrome(value) || seen.contains(value) || labels.count >= 50 { return }
+        seen.insert(value)
+        labels.append(value)
+    }
+    func walk(_ element: AXUIElement, depth: Int) {
+        if Date() >= deadline || labels.count >= 50 || depth > 7 { return }
+        AXUIElementSetMessagingTimeout(element, 1)
+        if usageSecure(element) {
+            let label = usageLabel(element)
+            if !label.isEmpty { add(label) }
+        } else {
+            for text in textsOf(element) { add(text) }
+        }
+        guard let raw = copyAttribute(element, kAXChildrenAttribute as String) else { return }
+        for child in elements(from: raw).prefix(25) {
+            walk(child, depth: depth + 1)
+        }
+    }
+    walk(window, depth: 0)
+    return labels
+}
+
+struct UsageInspection {
+    var emit: Bool
+    var targetText: String
+    var secure: Bool
+    var stateTexts: [String]
+}
+
+func usageInspectFocus(_ pid: pid_t, deadline: Date) -> UsageInspection {
+    let application = AXUIElementCreateApplication(pid)
+    return UsageInspection(emit: true, targetText: "", secure: false, stateTexts: usageWindowLabels(application, deadline: deadline))
+}
+
+func usageInspectClick(_ pid: pid_t, point: CGPoint, deadline: Date) -> UsageInspection {
+    let application = AXUIElementCreateApplication(pid)
+    AXUIElementSetMessagingTimeout(application, 1)
+    var element = usageElement(at: point, root: application)
+    if element == nil {
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 1)
+        element = usageElement(at: point, root: system)
+    }
+    var target = ""
+    var secure = false
+    if let element = element {
+        AXUIElementSetMessagingTimeout(element, 1)
+        secure = usageSecure(element)
+        target = secure ? usageLabel(element) : usageClimb(element)
+    }
+    return UsageInspection(
+        emit: true,
+        targetText: target,
+        secure: secure,
+        stateTexts: usageWindowLabels(application, deadline: deadline)
+    )
+}
+
+func usageInspectType(_ pid: pid_t, deadline: Date) -> UsageInspection {
+    let application = AXUIElementCreateApplication(pid)
+    AXUIElementSetMessagingTimeout(application, 1)
+    let labels = usageWindowLabels(application, deadline: deadline)
+    guard Date() < deadline,
+          let raw = copyAttribute(application, kAXFocusedUIElementAttribute as String),
+          CFGetTypeID(raw) == AXUIElementGetTypeID() else {
+        return UsageInspection(emit: false, targetText: "", secure: false, stateTexts: labels)
+    }
+    let element = raw as! AXUIElement
+    AXUIElementSetMessagingTimeout(element, 1)
+    let role = roleOf(element)
+    let editable = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"].contains(role)
+    let secure = usageSecure(element)
+    if !editable && !secure {
+        return UsageInspection(emit: false, targetText: "", secure: false, stateTexts: labels)
+    }
+    let label = usageLabel(element)
+    if secure {
+        return UsageInspection(emit: true, targetText: label, secure: true, stateTexts: labels)
+    }
+    let value = attributeString(element, kAXValueAttribute as String) ?? ""
+    let target: String
+    if label.isEmpty {
+        target = value
+    } else if value.isEmpty || value == label {
+        target = label
+    } else {
+        target = label + "\n" + value
+    }
+    return UsageInspection(emit: true, targetText: target, secure: false, stateTexts: labels)
+}
+
+final class UsageBox {
+    let lock = NSLock()
+    var done = false
+    var emit = false
+    var targetText = ""
+    var secure = false
+    var stateTexts: [String] = []
+
+    func complete(_ inspection: UsageInspection) {
+        lock.lock()
+        emit = inspection.emit
+        targetText = inspection.targetText
+        secure = inspection.secure
+        stateTexts = inspection.stateTexts
+        done = true
+        lock.unlock()
+    }
+
+    func snapshot() -> (done: Bool, emit: Bool, target: String, secure: Bool, states: [String]) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (done, emit, targetText, secure, stateTexts)
+    }
+}
+
+enum RecordedAction {
+    case focus(pid_t)
+    case click(pid_t, CGPoint)
+}
+
+final class UsageInflight {
+    let kind: String
+    let app: String
+    let pid: pid_t
+    let started = Date()
+    let box = UsageBox()
+
+    init(kind: String, app: String, pid: pid_t) {
+        self.kind = kind
+        self.app = app
+        self.pid = pid
+    }
+}
+
+let usageSession: URLSession = {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest = 2
+    configuration.timeoutIntervalForResource = 2
+    return URLSession(configuration: configuration)
+}()
+
+func postUsage(app: String, kind: String, targetText: String, secure: Bool, stateTexts: [String]) {
+    struct Payload: Encodable {
+        let at: String
+        let app: String
+        let kind: String
+        let targetText: String
+        let secure: Bool
+        let stateTexts: [String]
+    }
+    struct Event: Encodable {
+        let subject: String
+        let payload: Payload
+    }
+    let payload = Payload(
+        at: isoTimestamp(),
+        app: app,
+        kind: kind,
+        targetText: targetText,
+        secure: secure,
+        stateTexts: stateTexts
+    )
+    guard let url = URL(string: "http://127.0.0.1:47653/events"),
+          let body = try? JSONEncoder().encode(Event(subject: "usage.recorded", payload: payload)) else {
+        return
+    }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpBody = body
+    request.timeoutInterval = 2
+    usageSession.dataTask(with: request) { _, response, _ in
+        if let http = response as? HTTPURLResponse, http.statusCode != 202 {
+            fputs("usage publish status \(http.statusCode)\n", stderr)
+        }
+    }.resume()
+}
+
+final class UsageHub {
+    static let shared = UsageHub()
+    let lock = NSLock()
+    var actions: [RecordedAction] = []
+    var typePID: pid_t = 0
+    var typeAt = Date.distantPast
+    var typePending = false
+    var inflight: UsageInflight?
+    var hung = Set<pid_t>()
+
+    func enqueue(_ action: RecordedAction) {
+        lock.lock()
+        if actions.count < 40 {
+            actions.append(action)
+        }
+        lock.unlock()
+    }
+
+    func noteKey(_ pid: pid_t) {
+        lock.lock()
+        typePID = pid
+        typeAt = Date()
+        typePending = true
+        lock.unlock()
+    }
+
+    func start(_ job: UsageInflight, work: @escaping (Date) -> UsageInspection) {
+        inflight = job
+        let deadline = Date().addingTimeInterval(2.5)
+        Thread.detachNewThread {
+            let inspection = work(deadline)
+            job.box.complete(inspection)
+        }
+    }
+
+    func beginType(_ pid: pid_t) {
+        guard let name = usageAppName(pid) else { return }
+        if hung.contains(pid) { return }
+        let job = UsageInflight(kind: "type", app: name, pid: pid)
+        start(job) { deadline in
+            usageInspectType(pid, deadline: deadline)
+        }
+    }
+
+    func begin(_ action: RecordedAction) {
+        switch action {
+        case .focus(let pid):
+            guard let name = usageAppName(pid) else { return }
+            if hung.contains(pid) {
+                postUsage(app: name, kind: "focus", targetText: "", secure: false, stateTexts: [])
+                return
+            }
+            let job = UsageInflight(kind: "focus", app: name, pid: pid)
+            start(job) { deadline in
+                usageInspectFocus(pid, deadline: deadline)
+            }
+        case .click(let pid, let point):
+            guard let name = usageAppName(pid) else { return }
+            if hung.contains(pid) {
+                postUsage(app: name, kind: "click", targetText: "", secure: false, stateTexts: [])
+                return
+            }
+            let job = UsageInflight(kind: "click", app: name, pid: pid)
+            start(job) { deadline in
+                usageInspectClick(pid, point: point, deadline: deadline)
+            }
+        }
+    }
+
+    func tick() {
+        if let job = inflight {
+            let snap = job.box.snapshot()
+            if snap.done || Date().timeIntervalSince(job.started) >= 3 {
+                if !snap.done {
+                    hung.insert(job.pid)
+                    fputs("usage read timed out\n", stderr)
+                    postUsage(app: job.app, kind: job.kind, targetText: "", secure: false, stateTexts: [])
+                } else if snap.emit {
+                    postUsage(
+                        app: job.app,
+                        kind: job.kind,
+                        targetText: snap.target,
+                        secure: snap.secure,
+                        stateTexts: snap.states
+                    )
+                }
+                inflight = nil
+            } else {
+                return
+            }
+        }
+        lock.lock()
+        let readyType = typePending && Date().timeIntervalSince(typeAt) >= 0.35
+        let pendingPID = typePID
+        if readyType {
+            typePending = false
+        }
+        let next = actions.isEmpty ? nil : actions.removeFirst()
+        lock.unlock()
+        if readyType {
+            beginType(pendingPID)
+            return
+        }
+        if let next = next {
+            begin(next)
+        }
+    }
+}
+
+var usageTap: CFMachPort?
+
+func usageTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, userInfo: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        if let tap = usageTap {
+            CGEvent.tapEnable(tap: tap, enable: true)
+        }
+        return Unmanaged.passUnretained(event)
+    }
+    let selfPID = ProcessInfo.processInfo.processIdentifier
+    let front = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+    if type == .leftMouseDown && front != 0 && front != selfPID {
+        UsageHub.shared.enqueue(.click(front, event.location))
+    } else if type == .keyDown && front != 0 && front != selfPID {
+        let flags = event.flags
+        let code = event.getIntegerValueField(.keyboardEventKeycode)
+        let command = flags.contains(.maskCommand) || flags.contains(.maskControl)
+        if !command && (code < 54 || code > 63) {
+            UsageHub.shared.noteKey(front)
+        }
+    }
+    return Unmanaged.passUnretained(event)
+}
+
+func runRecorder() -> Never {
+    _ = NSApplication.shared
+    NSApp.setActivationPolicy(.prohibited)
+    ensureTrusted()
+    let mask = CGEventMask(1 << CGEventType.leftMouseDown.rawValue) | CGEventMask(1 << CGEventType.keyDown.rawValue)
+    let tap = CGEvent.tapCreate(
+        tap: .cgSessionEventTap,
+        place: .headInsertEventTap,
+        options: .listenOnly,
+        eventsOfInterest: mask,
+        callback: usageTapCallback,
+        userInfo: nil
+    ) ?? CGEvent.tapCreate(
+        tap: .cghidEventTap,
+        place: .headInsertEventTap,
+        options: .listenOnly,
+        eventsOfInterest: mask,
+        callback: usageTapCallback,
+        userInfo: nil
+    )
+    guard let tap = tap else {
+        fputs("could not watch input\n", stderr)
+        exit(1)
+    }
+    usageTap = tap
+    let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+    CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+    CGEvent.tapEnable(tap: tap, enable: true)
+    NSWorkspace.shared.notificationCenter.addObserver(
+        forName: NSWorkspace.didActivateApplicationNotification,
+        object: nil,
+        queue: OperationQueue.main
+    ) { note in
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+        if app.processIdentifier == ProcessInfo.processInfo.processIdentifier { return }
+        UsageHub.shared.enqueue(.focus(app.processIdentifier))
+    }
+    if let front = NSWorkspace.shared.frontmostApplication,
+       front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+        UsageHub.shared.enqueue(.focus(front.processIdentifier))
+    }
+    let timer = Timer(timeInterval: 0.05, repeats: true) { _ in
+        UsageHub.shared.tick()
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    RunLoop.main.add(timer, forMode: .default)
+    fputs("recording\n", stderr)
+    CFRunLoopRun()
+    exit(0)
+}
+
 let arguments = CommandLine.arguments
 setbuf(stderr, nil)
 if arguments.count >= 2 && arguments[1] == "apps" {
     listAppsAndExit()
 }
+if arguments.count == 2 && arguments[1] == "record" {
+    runRecorder()
+}
 if arguments.count < 3 {
-    fputs("usage: gui-reader apps | gui-reader <targetApp> <outputDir> [watch | perform <nodeId> | write <nodeId> <text>]\n", stderr)
+    fputs("usage: gui-reader apps | gui-reader record | gui-reader <targetApp> <outputDir> [watch | perform <nodeId> | write <nodeId> <text>]\n", stderr)
     exit(64)
 }
 
@@ -1541,7 +2007,7 @@ if arguments.count >= 4 {
         performID = arguments[4]
         writeText = arguments[5]
     } else {
-        fputs("usage: gui-reader apps | gui-reader <targetApp> <outputDir> [watch | perform <nodeId> | write <nodeId> <text>]\n", stderr)
+        fputs("usage: gui-reader apps | gui-reader record | gui-reader <targetApp> <outputDir> [watch | perform <nodeId> | write <nodeId> <text>]\n", stderr)
         exit(64)
     }
 }

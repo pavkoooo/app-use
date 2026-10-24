@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "notifications.schema.json",
   "title": "Notification bus",
-  "description": "Generic bus messages. Any program may register or unregister as a listener. A gui.changed event carries a GUI snapshot payload.",
+  "description": "Generic bus messages. Any program may register or unregister as a listener. gui.changed carries a GUI snapshot. usage.recorded carries one observed action.",
   "$defs": {
     "subjectName": {
-      "const": "gui.changed"
+      "enum": ["gui.changed", "usage.recorded"]
     },
     "listenerName": {
       "type": "string",
@@ -46,8 +46,32 @@
       "required": ["subject", "payload"],
       "properties": {
         "subject": { "$ref": "#/$defs/subjectName" },
-        "payload": { "$ref": "gui-snapshot.schema.json" }
-      }
+        "payload": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "subject": { "const": "gui.changed" } },
+            "required": ["subject"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "gui-snapshot.schema.json" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "subject": { "const": "usage.recorded" } },
+            "required": ["subject"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "usage-recorded.schema.json" }
+            }
+          }
+        }
+      ]
     }
   },
   "oneOf": [

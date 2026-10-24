@@ -7,6 +7,7 @@ BROKER="$ROOT/framework/runtime/notification-broker.py"
 ATTACH="$ROOT/framework/runtime/attach-gui-reader.sh"
 BROKER_PID="/tmp/app-use-broker.pid"
 WATCH_PID="/tmp/app-use-watcher.pid"
+RECORDER_PID="/tmp/app-use-recorder.pid"
 BROKER_LOG="/tmp/app-use-broker.log"
 
 broker_up() {
@@ -47,6 +48,7 @@ stop_port() {
   done
 }
 
+stop_pid_file "$RECORDER_PID"
 stop_pid_file "$WATCH_PID"
 stop_pid_file "$BROKER_PID"
 stop_port
@@ -82,3 +84,16 @@ if [[ "$ready" != "1" ]]; then
 fi
 
 "$ATTACH"
+
+python3 - <<'PY'
+import urllib.request
+request = urllib.request.Request(
+    "http://127.0.0.1:47653/record/start",
+    data=b"{}",
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=20) as response:
+    if response.status != 200:
+        raise SystemExit("recording did not start")
+PY

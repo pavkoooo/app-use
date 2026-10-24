@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "usage-recorded.schema.json",
+  "title": "Recorded usage",
+  "description": "One observed action in the front application. A password field sets secure and keeps the typed characters out of the event.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["at", "app", "kind", "targetText", "secure", "stateTexts"],
+  "properties": {
+    "at": {
+      "type": "string",
+      "minLength": 1,
+      "description": "When the action was observed, as an ISO 8601 timestamp."
+    },
+    "app": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name of the front application."
+    },
+    "kind": {
+      "enum": ["focus", "click", "type"]
+    },
+    "targetText": {
+      "type": "string",
+      "description": "The control's own words. Empty when the front application only changed. For typing, the field label and, unless the field is secure, the field's resulting text."
+    },
+    "secure": {
+      "type": "boolean",
+      "description": "True only when the control is a password field."
+    },
+    "stateTexts": {
+      "type": "array",
+      "description": "Visible labels in the front window after the action.",
+      "items": { "type": "string" }
+    }
+  }
+}

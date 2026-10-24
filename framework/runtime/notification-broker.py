@@ -18,21 +18,30 @@ VIEWER_DIR = os.path.join(ROOT, "dev", "viewer")
 ATTACH = os.path.join(ROOT, "framework", "runtime", "attach-gui-reader.sh")
 WATCH_PID = "/tmp/app-use-watcher.pid"
 WATCH_LOG = "/tmp/app-use-watcher.log"
+RECORDER_PID = "/tmp/app-use-recorder.pid"
+RECORDER_LOG = "/tmp/app-use-recorder.log"
 LOCK = threading.Lock()
 WATCH_LOCK = threading.Lock()
+RECORDER_LOCK = threading.Lock()
 LISTENERS = {}
 VIEWERS = []
 STATE = {"target": None}
+SUBJECTS = {"gui.changed", "usage.recorded"}
 SUBJECT = "gui.changed"
 WATCH_LOG_HANDLE = None
+RECORDER_LOG_HANDLE = None
 
 
 class NoTarget(Exception):
     pass
 
 
+def plugin_binary():
+    return os.path.join(ROOT, "platforms", "macos", "intel", "gui-reader", "gui-reader")
+
+
 def reader_argv(target, output):
-    binary = os.path.join(ROOT, "platforms", "macos", "intel", "gui-reader", "gui-reader")
+    binary = plugin_binary()
     if os.uname().machine == "arm64":
         try:
             subprocess.check_call(["arch", "-x86_64", "/usr/bin/true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -40,6 +49,17 @@ def reader_argv(target, output):
         except (OSError, subprocess.CalledProcessError):
             pass
     return [binary, target, output]
+
+
+def recorder_argv():
+    binary = plugin_binary()
+    if os.uname().machine == "arm64":
+        try:
+            subprocess.check_call(["arch", "-x86_64", "/usr/bin/true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return ["arch", "-x86_64", binary, "record"]
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    return [binary, "record"]
 
 
 def registered_target():
@@ -77,7 +97,7 @@ def list_apps():
 
 
 def valid_subjects(subjects):
-    return isinstance(subjects, list) and bool(subjects) and all(item == SUBJECT for item in subjects)
+    return isinstance(subjects, list) and bool(subjects) and all(item in SUBJECTS for item in subjects)
 
 
 def register_listener(name, subjects):
@@ -147,6 +167,79 @@ def start_watcher(target):
             pidfile.write(str(proc.pid))
 
 
+def recorder_running():
+    if not os.path.exists(RECORDER_PID):
+        return False
+    try:
+        pid = int(open(RECORDER_PID, encoding="utf-8").read().strip() or "0")
+    except (OSError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def stop_recorder():
+    global RECORDER_LOG_HANDLE
+    pid = 0
+    if os.path.exists(RECORDER_PID):
+        try:
+            pid = int(open(RECORDER_PID, encoding="utf-8").read().strip() or "0")
+        except (OSError, ValueError):
+            pid = 0
+        try:
+            os.remove(RECORDER_PID)
+        except OSError:
+            pass
+    if pid > 0:
+        _signal_watcher(pid, signal.SIGTERM)
+        for _ in range(20):
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                break
+            time.sleep(0.1)
+        else:
+            _signal_watcher(pid, signal.SIGKILL)
+    if RECORDER_LOG_HANDLE is not None:
+        try:
+            RECORDER_LOG_HANDLE.close()
+        except OSError:
+            pass
+        RECORDER_LOG_HANDLE = None
+
+
+def start_recorder():
+    global RECORDER_LOG_HANDLE
+    with RECORDER_LOCK:
+        stop_recorder()
+        binary = plugin_binary()
+        if not os.path.isfile(binary):
+            raise RuntimeError("recorder binary is missing")
+        handle = open(RECORDER_LOG, "w", encoding="utf-8")
+        proc = subprocess.Popen(
+            recorder_argv(),
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            cwd=ROOT,
+            start_new_session=True,
+        )
+        RECORDER_LOG_HANDLE = handle
+        with open(RECORDER_PID, "w", encoding="utf-8") as pidfile:
+            pidfile.write(str(proc.pid))
+        time.sleep(0.4)
+        if proc.poll() is not None:
+            try:
+                log = open(RECORDER_LOG, encoding="utf-8", errors="replace").read()[-500:]
+            except OSError:
+                log = ""
+            raise RuntimeError("recorder exited\n%s" % log)
+
+
 def fanout(event):
     subject = event.get("subject")
     with LOCK:
@@ -213,6 +306,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/perform":
             self.handle_perform()
             return
+        if path == "/record/start":
+            self.handle_record(True)
+            return
+        if path == "/record/stop":
+            self.handle_record(False)
+            return
         self.send_json(404, {"error": "not found"})
 
     def handle_listen(self, unregister):
@@ -230,7 +329,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": "subjects are required"})
             return
         if subjects is not None and not valid_subjects(subjects):
-            self.send_json(400, {"error": "subjects must be gui.changed"})
+            self.send_json(400, {"error": "subjects must be gui.changed or usage.recorded"})
             return
         with LOCK:
             if unregister:
@@ -280,7 +379,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": "listener name is required"})
             return
         if not valid_subjects(subjects):
-            self.send_json(400, {"error": "subjects must be gui.changed"})
+            self.send_json(400, {"error": "subjects must be gui.changed or usage.recorded"})
             return
         current = register_listener(name, subjects)
         with LOCK:
@@ -326,21 +425,62 @@ class Handler(BaseHTTPRequestHandler):
         result = {"action": action, "nodeId": node_id}
         self.send_json(200, result)
 
+    def handle_record(self, start):
+        try:
+            if start:
+                start_recorder()
+            else:
+                with RECORDER_LOCK:
+                    stop_recorder()
+        except Exception as exc:
+            self.send_json(500, {"error": str(exc)})
+            return
+        self.send_json(200, {"recording": recorder_running()})
+
+    def usage_payload_ok(self, payload):
+        if not isinstance(payload, dict):
+            return False
+        if not isinstance(payload.get("at"), str) or not payload.get("at"):
+            return False
+        if not isinstance(payload.get("app"), str) or not payload.get("app"):
+            return False
+        if payload.get("kind") not in ("focus", "click", "type"):
+            return False
+        if not isinstance(payload.get("targetText"), str):
+            return False
+        if not isinstance(payload.get("secure"), bool):
+            return False
+        states = payload.get("stateTexts")
+        if not isinstance(states, list) or any(not isinstance(item, str) for item in states):
+            return False
+        if payload.get("secure") and payload.get("kind") == "type":
+            return True
+        return True
+
     def handle_publish(self):
         try:
             event = self.read_body()
         except (ValueError, json.JSONDecodeError):
             self.send_json(400, {"error": "invalid json"})
             return
+        subject = event.get("subject")
         payload = event.get("payload")
-        if event.get("subject") != SUBJECT or not isinstance(payload, dict):
-            self.send_json(400, {"error": "expected gui.changed with a snapshot payload"})
-            return
-        if not payload.get("app") or not payload.get("capturedAt") or not isinstance(payload.get("tree"), dict):
-            self.send_json(400, {"error": "payload must be a GUI snapshot"})
+        if subject == SUBJECT:
+            if not isinstance(payload, dict):
+                self.send_json(400, {"error": "expected gui.changed with a snapshot payload"})
+                return
+            if not payload.get("app") or not payload.get("capturedAt") or not isinstance(payload.get("tree"), dict):
+                self.send_json(400, {"error": "payload must be a GUI snapshot"})
+                return
+        elif subject == "usage.recorded":
+            if not self.usage_payload_ok(payload):
+                self.send_json(400, {"error": "payload must be a usage record"})
+                return
+        else:
+            self.send_json(400, {"error": "expected gui.changed or usage.recorded"})
             return
         fanout(event)
-        self.send_json(202, {"subject": SUBJECT})
+        self.send_json(202, {"subject": subject})
 
     def do_GET(self):
         path, _, query = self.path.partition("?")
@@ -355,6 +495,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/snapshot":
             self.handle_snapshot()
+            return
+        if path == "/record":
+            self.send_json(200, {"recording": recorder_running()})
             return
         if path == "/events":
             listener = None

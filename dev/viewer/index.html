@@ -102,6 +102,13 @@
     button:hover { border-color: var(--accent); }
     #listener.connected { color: #1b7f4a; }
     #listener.disconnected { color: #a15c12; }
+    #usage { grid-column: 1 / -1; }
+    #usage-list {
+      max-height: 240px;
+      overflow: auto;
+      margin: 12px 0 0;
+      padding-left: 18px;
+    }
     @media (max-width: 860px) {
       header, main { padding-left: 16px; padding-right: 16px; }
       main { grid-template-columns: 1fr; }
@@ -127,6 +134,15 @@
     <section>
       <h2 id="copy-heading">Copy</h2>
       <div id="copy"></div>
+    </section>
+    <section id="usage">
+      <h2>记录</h2>
+      <div class="toolbar">
+        <button id="record-start" type="button">开始记录</button>
+        <button id="record-stop" type="button">停止记录</button>
+        <p class="meta" id="record-state">…</p>
+      </div>
+      <ul id="usage-list"></ul>
     </section>
   </main>
   <script>
@@ -443,6 +459,39 @@
           var message = JSON.parse(event.data);
           render(message.payload);
         });
+        source.addEventListener("usage.recorded", function (event) {
+          var message = JSON.parse(event.data);
+          addUsage(message.payload || {});
+        });
+      }
+
+      function addUsage(payload) {
+        var list = document.getElementById("usage-list");
+        var li = document.createElement("li");
+        var states = payload.stateTexts || [];
+        var parts = [payload.at || "", payload.app || "", payload.kind || "", payload.targetText || ""];
+        li.textContent = parts.join("  ") + (states.length ? "  " + states.join(" · ") : "");
+        list.insertBefore(li, list.firstChild);
+        while (list.children.length > 80) {
+          list.removeChild(list.lastChild);
+        }
+      }
+
+      function recordState(on) {
+        document.getElementById("record-state").textContent = on ? "正在记录" : "已停止";
+      }
+
+      function setRecording(on) {
+        return fetch(broker + (on ? "/record/start" : "/record/stop"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        }).then(function (response) {
+          if (!response.ok) throw new Error("record failed");
+          return response.json();
+        }).then(function (body) {
+          recordState(!!body.recording);
+        }).catch(offline);
       }
 
       function refresh() {
@@ -479,7 +528,7 @@
             listener: {
               operation: "register",
               listener: "viewer",
-              subjects: ["gui.changed"]
+              subjects: ["gui.changed", "usage.recorded"]
             }
           })
         }).then(function (response) {
@@ -490,6 +539,32 @@
           return refresh();
         }).catch(offline);
       });
+
+      document.getElementById("record-start").addEventListener("click", function () {
+        setRecording(true);
+      });
+      document.getElementById("record-stop").addEventListener("click", function () {
+        setRecording(false);
+      });
+
+      fetch(broker + "/listen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listener: "viewer",
+          subjects: ["usage.recorded"]
+        })
+      }).then(function (response) {
+        if (!response.ok) throw new Error("listen failed");
+        openListener();
+      }).catch(offline);
+
+      fetch(broker + "/record").then(function (response) {
+        if (!response.ok) return null;
+        return response.json();
+      }).then(function (body) {
+        if (body) recordState(!!body.recording);
+      }).catch(function () {});
 
       fetch(broker + "/apps").then(function (response) {
         if (!response.ok) throw new Error("apps failed");
