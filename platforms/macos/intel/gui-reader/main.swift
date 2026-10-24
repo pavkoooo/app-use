@@ -341,6 +341,7 @@ func includedChildren(of element: AXUIElement, inWeb: Bool = false) -> [AXUIElem
             let childRole = roleOf(child)
             return childRole == "AXWindow" || childRole == "AXMenuBar" || childRole == "AXScrollArea"
                 || childRole == "AXSheet" || childRole == "AXDrawer" || childRole == "AXPopover"
+                || childRole == "AXList"
         }
     }
     if role == "AXMenuBar" {
