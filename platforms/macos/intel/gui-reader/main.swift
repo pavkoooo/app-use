@@ -542,7 +542,7 @@ func raiseWindow(of element: AXUIElement) {
     for _ in 0..<20 {
         guard let node = current else { return }
         if roleOf(node) == "AXWindow" {
-            _ = AXUIElementPerformAction(node, kAXRaiseAction as CFString)
+            _ = performAction(node, kAXRaiseAction as String)
             _ = AXUIElementSetAttributeValue(node, kAXMainAttribute as CFString, kCFBooleanTrue)
             _ = AXUIElementSetAttributeValue(node, kAXFocusedAttribute as CFString, kCFBooleanTrue)
             return
@@ -678,7 +678,7 @@ func openAndClickMenuItem(_ element: AXUIElement, nodeID: String) -> Bool {
             current = parentElement(node)
         }
         guard let bar = bar else { return false }
-        guard AXUIElementPerformAction(bar, kAXPressAction as CFString) == .success else { return false }
+        guard performAction(bar, kAXPressAction as String) else { return false }
         let deadline = Date().addingTimeInterval(1)
         while Date() < deadline && !menuIsShowing(element) {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
@@ -963,7 +963,7 @@ func pressDockItem(named name: String) -> Bool {
         guard let childrenRaw = copyAttribute(list, kAXChildrenAttribute as String) else { continue }
         for child in elements(from: childrenRaw) {
             guard attributeString(child, kAXTitleAttribute as String) == name else { continue }
-            return AXUIElementPerformAction(child, kAXPressAction as CFString) == .success
+            return performAction(child, kAXPressAction as String)
         }
     }
     return false
