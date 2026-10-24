@@ -757,6 +757,11 @@ func performClick(_ element: AXUIElement, nodeID: String) {
         return
     }
     if roleOf(element) == "AXButton" && inDialog(element) {
+        raiseWindow(of: element)
+        if performAction(element, kAXPressAction as String) {
+            fputs("pressed \(nodeID)\n", stderr)
+            return
+        }
         let frame = frameOf(element)
         let point = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
         postClick(point, nodeID: nodeID, label: "clicked dialog button", tap: .cgSessionEventTap)
