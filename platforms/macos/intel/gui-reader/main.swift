@@ -346,7 +346,9 @@ func includedChildren(of element: AXUIElement, inWeb: Bool = false) -> [AXUIElem
     if role == "AXMenuBar" {
         return children.filter { child in
             guard roleOf(child) == "AXMenuBarItem" else { return false }
-            guard let title = attributeString(child, kAXTitleAttribute as String) else { return false }
+            // Status items carry no title; keep them and drop only the
+            // Apple menu.
+            guard let title = attributeString(child, kAXTitleAttribute as String) else { return true }
             if title == "Apple" { return false }
             if targetAppName.caseInsensitiveCompare("calculator") == .orderedSame {
                 return ownMenuTitles.contains(title)
