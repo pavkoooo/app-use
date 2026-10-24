@@ -86,12 +86,15 @@ func ensureTrusted() {
 
 var boundedMessaging = Set<String>()
 
-func boundMessaging(_ element: AXUIElement) {
+func boundMessaging(_ element: AXUIElement, inWeb: Bool = false) {
     let key = "\(Unmanaged.passUnretained(element).toOpaque())"
     if !boundedMessaging.insert(key).inserted {
         return
     }
-    AXUIElementSetMessagingTimeout(element, 2)
+    // Embedded web content answers from a separate WebKit process and the
+    // first cross-process answers can take seconds; a short timeout makes
+    // whole subtrees read as empty.
+    AXUIElementSetMessagingTimeout(element, inWeb ? 10 : 2)
 }
 
 func copyAttribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
@@ -277,8 +280,8 @@ func deduped(_ groups: [[AXUIElement]]) -> [AXUIElement] {
     return list
 }
 
-func childrenOf(_ element: AXUIElement) -> [AXUIElement] {
-    boundMessaging(element)
+func childrenOf(_ element: AXUIElement, inWeb: Bool = false) -> [AXUIElement] {
+    boundMessaging(element, inWeb: inWeb || roleOf(element) == "AXWebArea")
     let role = roleOf(element)
     var list: [AXUIElement] = []
     if let raw = copyAttribute(element, kAXChildrenAttribute as String) {
@@ -293,6 +296,16 @@ func childrenOf(_ element: AXUIElement) -> [AXUIElement] {
             list.append(contentsOf: elementList(raw))
         }
     }
+    if list.isEmpty {
+        // An empty first answer can be a cross-process timeout: embedded web
+        // content answers from a separate WebKit process and the first replies
+        // can take seconds. One patient retry catches it, while genuinely empty
+        // containers still answer fast.
+        AXUIElementSetMessagingTimeout(element, 10)
+        if let raw = copyAttribute(element, kAXChildrenAttribute as String) {
+            list.append(contentsOf: elements(from: raw))
+        }
+    }
     if list.isEmpty && (role == "AXScrollArea" || role == "AXWebArea" || role == "AXOutline" || role == "AXTable" || role == "AXList") {
         for name in [kAXVisibleChildrenAttribute as String, kAXContentsAttribute as String, kAXRowsAttribute as String] {
             if let raw = copyAttribute(element, name) {
@@ -302,7 +315,7 @@ func childrenOf(_ element: AXUIElement) -> [AXUIElement] {
     }
     let unique = deduped([list])
     for child in unique {
-        boundMessaging(child)
+        boundMessaging(child, inWeb: inWeb || role == "AXWebArea")
     }
     return unique
 }
@@ -323,14 +336,13 @@ func attributeString(_ element: AXUIElement, _ name: String) -> String? {
     return stringsFrom(raw).first
 }
 
-func includedChildren(of element: AXUIElement) -> [AXUIElement] {
+func includedChildren(of element: AXUIElement, inWeb: Bool = false) -> [AXUIElement] {
     let role = roleOf(element)
-    let children = childrenOf(element).filter { child in
-        if role == "AXMenu" || role == "AXMenuItem" || role == "AXMenuButton" { return true }
-        return belongsToTarget(child)
-    }
+    let children = childrenOf(element, inWeb: inWeb || role == "AXWebArea")
     if role == "AXApplication" {
+        // At the app level keep only this process's own windows and menu bar.
         let kept = children.filter { child in
+            guard belongsToTarget(child) else { return false }
             let childRole = roleOf(child)
             return childRole == "AXWindow" || childRole == "AXMenuBar"
         }
@@ -338,6 +350,7 @@ func includedChildren(of element: AXUIElement) -> [AXUIElement] {
             return kept
         }
         return children.filter { child in
+            guard belongsToTarget(child) else { return false }
             let childRole = roleOf(child)
             return childRole == "AXWindow" || childRole == "AXMenuBar" || childRole == "AXScrollArea"
                 || childRole == "AXSheet" || childRole == "AXDrawer" || childRole == "AXPopover"
@@ -354,6 +367,9 @@ func includedChildren(of element: AXUIElement) -> [AXUIElement] {
             return true
         }
     }
+    // Below the app, everything a window exposes is this app's visible UI.
+    // Embedded web content lives in a separate WebKit process, so a pid check
+    // here would silently drop the very copy the read is supposed to show.
     return children
 }
 
@@ -361,7 +377,7 @@ func nodeID(_ parent: String, _ index: Int) -> String {
     return "\(parent)/\(index)"
 }
 
-func readNode(_ element: AXUIElement, depth: Int, id: String, limit: Int = maxNodes) -> Node {
+func readNode(_ element: AXUIElement, depth: Int, id: String, limit: Int = maxNodes, inWeb: Bool = false) -> Node {
     let role = roleOf(element)
     let frame = frameOf(element)
     let texts = textsOf(element)
@@ -369,13 +385,14 @@ func readNode(_ element: AXUIElement, depth: Int, id: String, limit: Int = maxNo
         return Node(id: id, role: role, frame: frame, texts: texts, children: [])
     }
     emittedNodes += 1
-    let raw = includedChildren(of: element)
+    let webBelow = inWeb || role == "AXWebArea"
+    let raw = includedChildren(of: element, inWeb: webBelow)
     if role == "AXApplication" {
         let children = budgetedChildren(raw, parentID: id)
         return Node(id: id, role: role, frame: frame, texts: texts, children: children)
     }
     let children = raw.enumerated().map { index, child in
-        readNode(child, depth: depth + 1, id: nodeID(id, index), limit: limit)
+        readNode(child, depth: depth + 1, id: nodeID(id, index), limit: limit, inWeb: webBelow)
     }
     return Node(id: id, role: role, frame: frame, texts: texts, children: children)
 }
@@ -455,14 +472,16 @@ func elementAtPath(_ root: AXUIElement, id: String) -> AXUIElement? {
     guard let first = parts.first, first == "0" else { return nil }
     var current = root
     var built = "0"
+    var inWeb = false
     if built == id {
         return current
     }
     for part in parts.dropFirst() {
         guard let index = Int(part), index >= 0 else { return nil }
-        let children = includedChildren(of: current)
+        let children = includedChildren(of: current, inWeb: inWeb)
         guard index < children.count else { return nil }
         current = children[index]
+        inWeb = inWeb || roleOf(current) == "AXWebArea"
         built = nodeID(built, index)
     }
     return built == id ? current : nil
@@ -491,15 +510,16 @@ func resolveElement(_ application: AXUIElement, id: String) -> AXUIElement? {
     return findElement(application, id: "0", target: id, depth: 0)
 }
 
-func findElement(_ element: AXUIElement, id: String, target: String, depth: Int) -> AXUIElement? {
+func findElement(_ element: AXUIElement, id: String, target: String, depth: Int, inWeb: Bool = false) -> AXUIElement? {
     if id == target {
         return element
     }
     if depth >= 40 {
         return nil
     }
-    for (index, child) in includedChildren(of: element).enumerated() {
-        if let found = findElement(child, id: nodeID(id, index), target: target, depth: depth + 1) {
+    let webBelow = inWeb || roleOf(element) == "AXWebArea"
+    for (index, child) in includedChildren(of: element, inWeb: webBelow).enumerated() {
+        if let found = findElement(child, id: nodeID(id, index), target: target, depth: depth + 1, inWeb: webBelow) {
             return found
         }
     }
