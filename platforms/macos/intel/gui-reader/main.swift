@@ -648,6 +648,11 @@ func windowElement(_ element: AXUIElement) -> AXUIElement? {
 
 func navigationBackPoint(_ element: AXUIElement) -> CGPoint? {
     guard roleOf(element) == "AXStaticText", let window = windowElement(element) else { return nil }
+    // Only a label that names going back is a back button; popup rows and
+    // plain labels in the same corner must take a normal center click.
+    let label = (textsOf(element).first ?? "")
+    let backish = ["返回", "后退", "Back", "‹", "←", "<"]
+    guard backish.contains(where: { label.contains($0) }) else { return nil }
     let text = frameOf(element)
     let win = frameOf(window)
     guard text.width > 40, text.height > 8, text.height < 48 else { return nil }
@@ -895,7 +900,9 @@ func performClick(_ element: AXUIElement, nodeID: String) {
         fputs("picked \(nodeID)\n", stderr)
         return
     }
-    if performAction(element, kAXShowMenuAction as String) {
+    let elementRole = roleOf(element)
+    if elementRole == "AXMenuButton" || elementRole == "AXPopUpButton" || elementRole == "AXButton",
+       performAction(element, kAXShowMenuAction as String) {
         fputs("showed menu for \(nodeID)\n", stderr)
         return
     }
