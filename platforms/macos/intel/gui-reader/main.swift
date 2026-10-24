@@ -525,15 +525,15 @@ func setSelected(_ element: AXUIElement) -> Bool {
     return AXUIElementSetAttributeValue(element, kAXSelectedAttribute as CFString, kCFBooleanTrue) == .success
 }
 
-func postClick(_ point: CGPoint, nodeID: String, label: String) {
+func postClick(_ point: CGPoint, nodeID: String, label: String, tap: CGEventTapLocation = .cghidEventTap) {
     guard let source = CGEventSource(stateID: .hidSystemState),
           let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
           let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
         fputs("could not create a click for \(nodeID)\n", stderr)
         exit(1)
     }
-    down.post(tap: .cghidEventTap)
-    up.post(tap: .cghidEventTap)
+    down.post(tap: tap)
+    up.post(tap: tap)
     fputs("\(label) \(nodeID)\n", stderr)
 }
 
@@ -754,7 +754,7 @@ func performClick(_ element: AXUIElement, nodeID: String) {
     if roleOf(element) == "AXButton" && inDialog(element) {
         let frame = frameOf(element)
         let point = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
-        postClick(point, nodeID: nodeID, label: "clicked dialog button")
+        postClick(point, nodeID: nodeID, label: "clicked dialog button", tap: .cgSessionEventTap)
         return
     }
     if roleOf(element) == "AXButton" && prefersPointerClick(element) {
@@ -1229,23 +1229,24 @@ func waitForTree(_ application: AXUIElement) -> Node? {
             if calculator && hasAllDigits(tree) {
                 return tree
             }
-            if !calculator && windowControlCount(tree) >= 8 {
-                if !containsRole(tree, "AXWebArea") {
-                    return tree
-                }
-                let nodes = countNodes(tree)
-                if nodes == lastNodes {
-                    stable += 1
-                } else {
-                    stable = 0
-                    lastNodes = nodes
-                }
+            let nodes = countNodes(tree)
+            if nodes == lastNodes {
+                stable += 1
+            } else {
+                stable = 0
+                lastNodes = nodes
+            }
+            let waited = Date().timeIntervalSince(started)
+            let web = containsRole(tree, "AXWebArea")
+            if !calculator && !web && windowControlCount(tree) >= 8 {
+                return tree
+            }
+            if !calculator && web {
                 if richestWebCount(tree) >= 15 {
                     richPolls += 1
                 } else {
                     richPolls = 0
                 }
-                let waited = Date().timeIntervalSince(started)
                 if richestWebCount(tree) >= 15 && nodes >= 300 {
                     return tree
                 }
@@ -1256,6 +1257,9 @@ func waitForTree(_ application: AXUIElement) -> Node? {
                 if stable >= 3 && waited >= (thinWeb ? 20 : 6) {
                     return tree
                 }
+            }
+            if !calculator && !web && containsRole(tree, "AXWindow") && stable >= 2 && waited >= 0.5 {
+                return tree
             }
         }
         Thread.sleep(forTimeInterval: 0.25)
