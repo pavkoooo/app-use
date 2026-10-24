@@ -72,7 +72,9 @@ def read_snapshot():
     if not target:
         raise NoTarget()
     os.makedirs(VIEWER_DIR, exist_ok=True)
-    subprocess.run(reader_argv(target, VIEWER_DIR), check=True, timeout=45)
+    # The reader self-limits at 75s; stay above that so it always exits itself
+    # instead of being killed mid-call.
+    subprocess.run(reader_argv(target, VIEWER_DIR), check=True, timeout=90)
     with open(os.path.join(VIEWER_DIR, "snapshot.json"), encoding="utf-8") as handle:
         return handle.read()
 
@@ -84,7 +86,7 @@ def perform_action(target, action, node_id, text=None):
         argv += ["write", node_id, text]
     else:
         argv += ["perform", node_id]
-    subprocess.run(argv, check=True, timeout=70)
+    subprocess.run(argv, check=True, timeout=90)
 
 
 def list_apps():

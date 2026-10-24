@@ -427,6 +427,113 @@ def exact_texts_of(node):
     return [text.strip() for text in plain_texts(node) if text.strip()]
 
 
+def frontmost_app():
+    out = subprocess.check_output(
+        ["osascript", "-e",
+         'tell application "System Events" to get name of first application process whose frontmost is true'],
+        text=True, timeout=20,
+    )
+    return out.strip()
+
+
+def raw_snapshot():
+    status, raw = request("GET", "/snapshot", timeout=90)
+    if status != 200:
+        fail("snapshot failed: %s %s" % (status, raw[:300]))
+    return json.loads(raw.decode("utf-8"))
+
+
+def dock_labels(items):
+    labels = []
+    for node in items:
+        texts = [text.strip() for text in plain_texts(node) if text.strip()]
+        labels.append(texts[0] if texts else "")
+    return labels
+
+
+def run_dock():
+    original = frontmost_app()
+    register("Dock")
+    before = raw_snapshot()
+    if "dock" not in (before.get("app") or "").lower():
+        fail("snapshot app is %s" % before.get("app"))
+    items = find_nodes(before["tree"], lambda node: node.get("role") == "AXDockItem")
+    labels = dock_labels(items)
+    if len(items) < 10:
+        fail("Dock strip read only %d items" % len(items))
+    for required in ("Finder", "Trash", "Calculator"):
+        if required not in labels:
+            fail("Dock strip is missing the %s item" % required)
+    calc = items[labels.index("Calculator")]
+    perform(calc["id"], [])
+    time.sleep(0.8)
+    front = frontmost_app()
+    if front != "Calculator":
+        fail("frontmost is %s after clicking the Calculator dock item" % front)
+    if original and original != "Calculator":
+        subprocess.call(["open", "-a", original], timeout=20)
+    print("ok: Dock %d items read; clicked Calculator; frontmost switched to Calculator" % len(items))
+
+
+def sort_options(tree):
+    options = []
+    for holder in find_nodes(tree, lambda node: node.get("role") == "AXMenuItem"
+                             and (plain_texts(node) or [""])[0].strip() == "Sort By"):
+        for menu in holder.get("children") or []:
+            for option in menu.get("children") or []:
+                if option.get("role") == "AXMenuItem":
+                    options.append(option)
+    return options
+
+
+def option_label(node):
+    return (plain_texts(node) or [""])[0].strip()
+
+
+def option_checked(node):
+    return "✓" in plain_texts(node)
+
+
+def run_menus():
+    open_app("Finder")
+    target = listed_id(["Finder"])
+    register(target)
+    before = snapshot()
+    if "finder" not in (before.get("app") or "").lower():
+        fail("snapshot app is %s" % before.get("app"))
+    options = sort_options(before["tree"])
+    if len(options) < 2:
+        fail("View > Sort By submenu did not read")
+    checked = [option for option in options if option_checked(option)]
+    if not checked:
+        fail("no sort option is checked")
+    original = checked[0]
+    choice = next((option for option in options
+                   if option_label(option) == "Name" and option is not original), None)
+    if choice is None:
+        choice = next((option for option in options if option is not original), None)
+    if choice is None:
+        fail("no other sort option to click")
+    perform(choice["id"], [])
+    after = snapshot()
+    after_options = sort_options(after["tree"])
+    if not any(option_checked(option) and option_label(option) == option_label(choice)
+               for option in after_options):
+        fail("nested Sort By click did not move the checkmark to %s" % option_label(choice))
+    restore = next((option for option in after_options
+                    if option_label(option) == option_label(original)), None)
+    if restore is None:
+        fail("original sort option %s is gone" % option_label(original))
+    perform(restore["id"], [])
+    final = snapshot()
+    final_options = sort_options(final["tree"])
+    if not any(option_checked(option) and option_label(option) == option_label(original)
+               for option in final_options):
+        fail("sort order was not restored to %s" % option_label(original))
+    print("ok: nested Sort By %s -> %s -> %s restored" % (
+        option_label(original), option_label(choice), option_label(original)))
+
+
 def main():
     choice = sys.argv[1] if len(sys.argv) > 1 else ""
     runners = {
@@ -434,10 +541,12 @@ def main():
         "finder": run_finder,
         "settings": run_settings,
         "clash": run_clash,
+        "dock": run_dock,
+        "menus": run_menus,
     }
     runner = runners.get(choice)
     if runner is None:
-        fail("usage: operate-gui.py chatgpt|finder|settings|clash")
+        fail("usage: operate-gui.py chatgpt|finder|settings|clash|dock|menus")
     runner()
 
 

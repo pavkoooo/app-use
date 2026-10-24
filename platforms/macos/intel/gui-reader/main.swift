@@ -1386,6 +1386,11 @@ func waitForTree(_ application: AXUIElement) -> Node? {
             if !calculator && !web && containsRole(tree, "AXWindow") && stable >= 2 && waited >= 0.5 {
                 return tree
             }
+            // A faceless app that exposes a settled strip of content without any
+            // window is done reading; an app still loading shows almost nothing.
+            if !calculator && !web && !containsRole(tree, "AXWindow") && nodes >= 8 && stable >= 3 && waited >= 1 {
+                return tree
+            }
         }
         Thread.sleep(forTimeInterval: 0.25)
     } while Date() < deadline
