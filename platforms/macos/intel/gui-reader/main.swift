@@ -613,12 +613,21 @@ func owningMenu(_ element: AXUIElement) -> AXUIElement? {
     return nil
 }
 
-func menuIsShowing(_ element: AXUIElement) -> Bool {
-    if let menu = owningMenu(element), let raw = copyAttribute(menu, kAXVisibleChildrenAttribute as String) {
-        return !elements(from: raw).isEmpty
-    }
+func menuFrameIsOnScreen(_ element: AXUIElement) -> Bool {
     let frame = frameOf(element)
-    return frame.width > 20 && frame.x > 1 && frame.y > 20
+    return frame.width > 20 && frame.height > 8 && frame.x > 1 && frame.y > 20
+}
+
+func menuIsShowing(_ element: AXUIElement) -> Bool {
+    let onScreen = menuFrameIsOnScreen(element)
+    if let menu = owningMenu(element), let raw = copyAttribute(menu, kAXVisibleChildrenAttribute as String) {
+        let visible = !elements(from: raw).isEmpty
+        if roleOf(element) == "AXMenuItem" {
+            return visible && onScreen
+        }
+        return visible
+    }
+    return onScreen
 }
 
 func openAndClickMenuItem(_ element: AXUIElement, nodeID: String) -> Bool {
