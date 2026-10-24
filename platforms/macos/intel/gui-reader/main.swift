@@ -154,6 +154,9 @@ func stringsFrom(_ raw: CFTypeRef) -> [String] {
     if typeID == CFAttributedStringGetTypeID() {
         return trimmed((raw as! NSAttributedString).string).map { [$0] } ?? []
     }
+    if typeID == CFBooleanGetTypeID() {
+        return [(raw as! NSNumber).boolValue ? "1" : "0"]
+    }
     if typeID == CFNumberGetTypeID() {
         return trimmed((raw as! NSNumber).stringValue).map { [$0] } ?? []
     }
@@ -166,6 +169,8 @@ func stringsFrom(_ raw: CFTypeRef) -> [String] {
                 out.append(contentsOf: trimmed(text).map { [$0] } ?? [])
             } else if let text = item as? NSAttributedString {
                 out.append(contentsOf: trimmed(text.string).map { [$0] } ?? [])
+            } else if CFGetTypeID(item as CFTypeRef) == CFBooleanGetTypeID() {
+                out.append((item as! NSNumber).boolValue ? "1" : "0")
             } else if let text = item as? NSNumber {
                 out.append(contentsOf: trimmed(text.stringValue).map { [$0] } ?? [])
             }
