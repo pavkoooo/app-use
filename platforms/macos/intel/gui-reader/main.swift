@@ -430,8 +430,26 @@ func mergePreservedMenu(_ tree: Node) -> Node {
     return walk(tree)
 }
 
+func elementAtPath(_ root: AXUIElement, id: String) -> AXUIElement? {
+    let parts = id.split(separator: "/")
+    guard let first = parts.first, first == "0" else { return nil }
+    var current = root
+    var built = "0"
+    if built == id {
+        return current
+    }
+    for part in parts.dropFirst() {
+        guard let index = Int(part), index >= 0 else { return nil }
+        let children = includedChildren(of: current)
+        guard index < children.count else { return nil }
+        current = children[index]
+        built = nodeID(built, index)
+    }
+    return built == id ? current : nil
+}
+
 func resolveElement(_ application: AXUIElement, id: String) -> AXUIElement? {
-    if let found = findElement(application, id: "0", target: id, depth: 0) {
+    if let found = elementAtPath(application, id: id) {
         return found
     }
     let parts = id.split(separator: "/").map(String.init)
@@ -483,6 +501,7 @@ func parentElement(_ element: AXUIElement) -> AXUIElement? {
 }
 
 func performAction(_ element: AXUIElement, _ name: String) -> Bool {
+    AXUIElementSetMessagingTimeout(element, 2)
     guard actionNames(element).contains(name) else { return false }
     return AXUIElementPerformAction(element, name as CFString) == .success
 }
@@ -689,7 +708,9 @@ func inDialog(_ element: AXUIElement) -> Bool {
 
 func prefersPointerClick(_ element: AXUIElement) -> Bool {
     let ident = attributeString(element, kAXIdentifierAttribute as String) ?? ""
-    return ident.contains("NavigationTab")
+    if ident.contains("NavigationTab") { return true }
+    let subrole = attributeString(element, kAXSubroleAttribute as String) ?? ""
+    return subrole == "AXFullScreenButton"
 }
 
 func performClick(_ element: AXUIElement, nodeID: String) {
@@ -1467,6 +1488,7 @@ func listAppsAndExit() -> Never {
 }
 
 let arguments = CommandLine.arguments
+setbuf(stderr, nil)
 if arguments.count >= 2 && arguments[1] == "apps" {
     listAppsAndExit()
 }
