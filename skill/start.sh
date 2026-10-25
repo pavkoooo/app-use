@@ -1,14 +1,31 @@
 #!/bin/bash
-# Starts the broker and reads the plan target once. The viewer registers the watched app.
+# One-shot start: notification broker + gui-reader attach + usage recording.
+# Requires: macOS, Accessibility permission for the terminal/Cursor hosting this script,
+#           /usr/bin/python3 (system), and the shipped platforms/macos/intel/gui-reader/gui-reader.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BROKER="$ROOT/framework/runtime/notification-broker.py"
 ATTACH="$ROOT/framework/runtime/attach-gui-reader.sh"
+BINARY="$ROOT/platforms/macos/intel/gui-reader/gui-reader"
 BROKER_PID="/tmp/app-use-broker.pid"
 WATCH_PID="/tmp/app-use-watcher.pid"
 RECORDER_PID="/tmp/app-use-recorder.pid"
 BROKER_LOG="/tmp/app-use-broker.log"
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 not found. macOS provides /usr/bin/python3 — open Terminal and retry." >&2
+  exit 1
+fi
+if [[ ! -x "$BINARY" && "${APP_USE_BUILD:-}" != "1" ]]; then
+  echo "prebuilt gui-reader missing: $BINARY" >&2
+  echo "Use a full clone of this repo, or set APP_USE_BUILD=1 to compile (developer path)." >&2
+  exit 1
+fi
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "app-use skill currently ships a macOS Intel reader only." >&2
+  exit 1
+fi
 
 broker_up() {
   python3 -c 'import socket; socket.create_connection(("127.0.0.1", 47653), 1).close()' >/dev/null 2>&1
@@ -97,3 +114,6 @@ with urllib.request.urlopen(request, timeout=20) as response:
     if response.status != 200:
         raise SystemExit("recording did not start")
 PY
+
+echo "app-use ready: broker http://127.0.0.1:47653  viewer $ROOT/dev/viewer/index.html"
+echo "Grant Accessibility to this Terminal/Cursor if reads return empty trees."

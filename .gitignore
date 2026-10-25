@@ -1,1 +1,9 @@
-platforms/macos/intel/gui-reader/gui-reader
+# Runtime GUI snapshots (may contain personal UI copy). Keep the viewer HTML.
+dev/viewer/snapshot.json
+dev/viewer/snapshot.js
+.DS_Store
+# Local bench artifacts (screenshots / raw JSON reruns)
+bench/out/
+# Local / large artifacts
+docs/demo/*.mov
+bench/ocr-screenshot

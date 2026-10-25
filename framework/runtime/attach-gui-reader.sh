@@ -1,5 +1,6 @@
 #!/bin/bash
-# Skill-start hook. Reads the generic plan and attaches the macOS Intel gui.read plugin.
+# Attach the shipped macOS gui-reader. Prefers the prebuilt binary (zero toolchain).
+# Set APP_USE_BUILD=1 to recompile from main.swift when developing.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -22,6 +23,15 @@ if [[ "$MODE" != "apps" ]]; then
     exit 1
   fi
 fi
+
+require_python() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "python3 is required (macOS includes /usr/bin/python3)." >&2
+    exit 1
+  fi
+}
+
+require_python
 
 TARGET_APP=""
 if [[ "$MODE" != "apps" ]]; then
@@ -77,6 +87,10 @@ run_reader() {
 }
 
 build_x86_64() {
+  if ! command -v xcrun >/dev/null 2>&1; then
+    echo "APP_USE_BUILD=1 needs Xcode or Command Line Tools (xcrun)." >&2
+    exit 1
+  fi
   xcrun --sdk macosx swiftc \
     -target x86_64-apple-macosx13.0 \
     -framework Cocoa \
@@ -87,6 +101,10 @@ build_x86_64() {
 }
 
 build_host() {
+  if ! command -v xcrun >/dev/null 2>&1; then
+    echo "APP_USE_BUILD=1 needs Xcode or Command Line Tools (xcrun)." >&2
+    exit 1
+  fi
   xcrun --sdk macosx swiftc \
     -framework Cocoa \
     -framework ApplicationServices \
@@ -95,27 +113,43 @@ build_host() {
   codesign --force --sign - "$BINARY"
 }
 
-needs_build=0
-if [[ ! -x "$BINARY" || "$SOURCE" -nt "$BINARY" ]]; then
-  needs_build=1
-fi
+ensure_binary() {
+  if [[ -x "$BINARY" && "${APP_USE_BUILD:-}" != "1" ]]; then
+    return 0
+  fi
+  if [[ "${APP_USE_BUILD:-}" == "1" ]]; then
+    echo "APP_USE_BUILD=1: compiling gui-reader from source" >&2
+    if [[ "$(uname -m)" == "arm64" ]] && ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+      build_host
+    else
+      build_x86_64
+    fi
+    return 0
+  fi
+  if [[ ! -x "$BINARY" ]]; then
+    echo "prebuilt gui-reader missing at $BINARY" >&2
+    echo "Re-clone the repo, or set APP_USE_BUILD=1 to compile (needs Xcode CLT)." >&2
+    exit 1
+  fi
+}
+
+ensure_binary
 
 HOST_ARCH="$(uname -m)"
 if [[ "$HOST_ARCH" == "arm64" ]]; then
+  # Shipped binary is x86_64 (macOS Intel package). Prefer Rosetta.
   if arch -x86_64 /usr/bin/true 2>/dev/null; then
-    if [[ "$needs_build" == "1" ]]; then
-      build_x86_64
-    fi
     echo "running gui-reader as x86_64 under Rosetta" >&2
     run_reader arch -x86_64 "$BINARY"
   fi
-  echo "Rosetta is not installed. Building a host-arch (arm64) binary so the read can run. The plugin package stays macos-intel." >&2
-  build_host
-  run_reader "$BINARY"
+  if [[ "${APP_USE_BUILD:-}" == "1" ]]; then
+    echo "Rosetta missing; building host-arch binary" >&2
+    build_host
+    run_reader "$BINARY"
+  fi
+  echo "Apple Silicon needs Rosetta for the shipped Intel binary, or APP_USE_BUILD=1." >&2
+  exit 1
 fi
 
-if [[ "$needs_build" == "1" ]]; then
-  build_x86_64
-fi
 echo "running gui-reader as x86_64" >&2
 run_reader "$BINARY"
