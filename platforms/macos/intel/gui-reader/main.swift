@@ -947,8 +947,43 @@ func prefersPointerClick(_ element: AXUIElement) -> Bool {
     return subrole == "AXFullScreenButton"
 }
 
+/// JavaFX (and similar) sidebars often expose only AXStaticText labels with
+/// AXShowMenu — the real hit target is the row band beside the glyphs. Click
+/// the leading edge of the parent list/scroll so a text click still activates.
+func clickLabelRow(_ element: AXUIElement, nodeID: String) -> Bool {
+    guard roleOf(element) == "AXStaticText" else { return false }
+    let actions = actionNames(element)
+    if actions.contains(kAXPressAction as String) {
+        return false
+    }
+    let text = frameOf(element)
+    guard text.width > 0, text.height > 0 else { return false }
+    var hitX = text.x + min(16, max(text.width / 4, 4))
+    var current: AXUIElement? = element
+    for _ in 0..<6 {
+        guard let node = current, let parent = parentElement(node) else { break }
+        let role = roleOf(parent)
+        if role == "AXScrollArea" || role == "AXList" || role == "AXOutline" || role == "AXTable" || role == "AXGroup" {
+            let parentFrame = frameOf(parent)
+            if parentFrame.width > 40 {
+                hitX = parentFrame.x + min(36, max(parentFrame.width * 0.12, 16))
+                break
+            }
+        }
+        if role == "AXWindow" || role == "AXApplication" { break }
+        current = parent
+    }
+    let point = CGPoint(x: hitX, y: text.y + text.height / 2)
+    raiseWindow(of: element)
+    postClick(point, nodeID: nodeID, label: "clicked label row of", tap: .cgSessionEventTap)
+    return true
+}
+
 func performClick(_ element: AXUIElement, nodeID: String) {
     if roleOf(element) == "AXMenuItem" && openAndClickMenuItem(element, nodeID: nodeID) {
+        return
+    }
+    if clickLabelRow(element, nodeID: nodeID) {
         return
     }
     // System open/save sheet — same leaves the HTML Layout pane shows.
@@ -1115,15 +1150,128 @@ func openName(for target: String) -> String {
     return target
 }
 
+/// JavaFX / Swing / Electron helpers often expose a useless process name
+/// ("Main", "java") while the real product name is on the window title.
+func genericProcessName(_ name: String) -> Bool {
+    switch name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+    case "main", "java", "javaw", "javaapplicationstub", "program", "electron",
+         "prefix", "helper", "application":
+        return true
+    default:
+        return false
+    }
+}
+
+func normalizeAppLabel(_ name: String) -> String {
+    var value = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    // "Hello Minecraft! Launcher v3.16.4" -> drop trailing version for matching.
+    if let regex = try? NSRegularExpression(pattern: #"\s+v?\d+(?:\.\d+){1,3}$"#, options: [.caseInsensitive]) {
+        let range = NSRange(value.startIndex..<value.endIndex, in: value)
+        value = regex.stringByReplacingMatches(in: value, options: [], range: range, withTemplate: "")
+    }
+    return value.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+func primaryWindowTitle(for app: NSRunningApplication) -> String? {
+    let element = AXUIElementCreateApplication(app.processIdentifier)
+    AXUIElementSetMessagingTimeout(element, 2)
+    _ = AXUIElementSetAttributeValue(element, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    _ = AXUIElementSetAttributeValue(element, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+    for window in standardWindows(element) {
+        if let title = attributeString(window, kAXTitleAttribute as String),
+           !title.isEmpty,
+           !genericProcessName(title) {
+            return title
+        }
+        let texts = textsOf(window).filter {
+            !$0.isEmpty && !genericProcessName($0)
+                && $0.lowercased() != "window"
+                && $0.lowercased() != "standard window"
+                && $0.lowercased() != "text"
+                && $0.lowercased() != "button"
+        }
+        if let title = texts.first {
+            return title
+        }
+    }
+    return nil
+}
+
+func windowTitle(from tree: Node) -> String? {
+    for child in tree.children where child.role == "AXWindow" {
+        for text in child.texts {
+            let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if value.isEmpty || genericProcessName(value) { continue }
+            let lower = value.lowercased()
+            if lower == "window" || lower == "standard window" || lower == "text" || lower == "button" {
+                continue
+            }
+            return value
+        }
+    }
+    return nil
+}
+
+func resolvedAppName(running: NSRunningApplication, tree: Node, fallback: String) -> String {
+    let listed = listedName(for: running)
+    if !listed.isEmpty && !genericProcessName(listed) {
+        return listed
+    }
+    if let title = windowTitle(from: tree) {
+        return title
+    }
+    if !listed.isEmpty {
+        return listed
+    }
+    return fallback
+}
+
+func listedName(for app: NSRunningApplication) -> String {
+    let raw = (app.localizedName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if !raw.isEmpty && !genericProcessName(raw) {
+        return raw
+    }
+    if let title = primaryWindowTitle(for: app), !title.isEmpty {
+        return title
+    }
+    return raw.isEmpty ? "App" : raw
+}
+
+func labelMatches(_ label: String, needle: String) -> Bool {
+    let left = normalizeAppLabel(label).lowercased()
+    let right = normalizeAppLabel(needle).lowercased()
+    if left.isEmpty || right.isEmpty { return false }
+    if left == right { return true }
+    if left.contains(right) || right.contains(left) { return true }
+    let compactLeft = left.replacingOccurrences(of: " ", with: "")
+    let compactRight = right.replacingOccurrences(of: " ", with: "")
+    if compactLeft == compactRight { return true }
+    // HMCL ships as a jar whose window title is "Hello Minecraft! Launcher".
+    if right == "hmcl" && left.contains("minecraft") && left.contains("launcher") {
+        return true
+    }
+    if left == "hmcl" && right.contains("minecraft") && right.contains("launcher") {
+        return true
+    }
+    return false
+}
+
 func matches(_ app: NSRunningApplication, target: String) -> Bool {
     let needle = target.lowercased()
     if needle == "calculator", app.bundleIdentifier == "com.apple.calculator" {
         return true
     }
-    if app.localizedName?.lowercased() == needle {
+    if let name = app.localizedName, labelMatches(name, needle: target) {
         return true
     }
-    if app.bundleURL?.deletingPathExtension().lastPathComponent.lowercased() == needle {
+    if let folder = app.bundleURL?.deletingPathExtension().lastPathComponent,
+       labelMatches(folder, needle: target) {
+        return true
+    }
+    if let title = primaryWindowTitle(for: app), labelMatches(title, needle: target) {
+        return true
+    }
+    if let listed = Optional(listedName(for: app)), labelMatches(listed, needle: target) {
         return true
     }
     return false
@@ -1194,12 +1342,49 @@ func applicationURL(named target: String) -> URL? {
         for url in items where url.pathExtension.caseInsensitiveCompare("app") == .orderedSame {
             let folder = url.deletingPathExtension().lastPathComponent.lowercased()
             let display = manager.displayName(atPath: url.path).lowercased()
-            if folder == needle || display == needle || folder == compact {
+            if folder == needle || display == needle || folder == compact || labelMatches(folder, needle: target) || labelMatches(display, needle: target) {
                 return url
             }
         }
     }
     return nil
+}
+
+func jarURL(named target: String) -> URL? {
+    let roots = [
+        "/Applications",
+        (NSHomeDirectory() as NSString).appendingPathComponent("Applications"),
+    ]
+    let manager = FileManager.default
+    for root in roots {
+        guard let items = try? manager.contentsOfDirectory(
+            at: URL(fileURLWithPath: root, isDirectory: true),
+            includingPropertiesForKeys: nil
+        ) else { continue }
+        for url in items where url.pathExtension.caseInsensitiveCompare("jar") == .orderedSame {
+            let stem = url.deletingPathExtension().lastPathComponent
+            if labelMatches(stem, needle: target) {
+                return url
+            }
+        }
+    }
+    return nil
+}
+
+func launchJar(_ url: URL) -> Bool {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/java")
+    process.arguments = ["-jar", url.path]
+    process.currentDirectoryURL = url.deletingLastPathComponent()
+    do {
+        try process.run()
+    } catch {
+        fputs("java -jar \(url.lastPathComponent) failed: \(error)\n", stderr)
+        return false
+    }
+    fputs("launched jar \(url.lastPathComponent)\n", stderr)
+    // Detach: do not wait for the JVM to exit.
+    return true
 }
 
 func launch(_ target: String) throws {
@@ -1214,6 +1399,15 @@ func launch(_ target: String) throws {
         return
     }
     if let url = applicationURL(named: target), runOpen([url.path], label: url.lastPathComponent) {
+        return
+    }
+    if let jar = jarURL(named: target), launchJar(jar) {
+        return
+    }
+    // Window-title targets (e.g. "Hello Minecraft! Launcher") for an already
+    // mapped jar stem still need a jar launch when open -a fails.
+    if let jar = jarURL(named: "HMCL"), labelMatches(target, needle: "HMCL") || labelMatches(target, needle: "Hello Minecraft! Launcher"),
+       launchJar(jar) {
         return
     }
     exit(1)
@@ -1797,9 +1991,8 @@ func listAppsAndExit() -> Never {
     var apps: [ListedApp] = []
     let running = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
     for app in running {
-        guard let name = app.localizedName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
-            continue
-        }
+        let name = listedName(for: app)
+        guard !name.isEmpty else { continue }
         let id: String
         if app.bundleIdentifier == "com.apple.calculator" || name.caseInsensitiveCompare("Calculator") == .orderedSame {
             id = "calculator"
@@ -1844,12 +2037,11 @@ func usageChrome(_ text: String) -> Bool {
 
 func usageAppName(_ pid: pid_t) -> String? {
     guard pid > 0,
-          let name = NSRunningApplication(processIdentifier: pid)?.localizedName?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-          !name.isEmpty else {
+          let app = NSRunningApplication(processIdentifier: pid) else {
         return nil
     }
-    return name
+    let name = listedName(for: app)
+    return name.isEmpty ? nil : name
 }
 
 func usageSecure(_ element: AXUIElement) -> Bool {
@@ -2358,7 +2550,7 @@ guard let tree = waitForTree(application) else {
     exit(1)
 }
 
-let appName = running.localizedName ?? targetApp
+let appName = resolvedAppName(running: running, tree: tree, fallback: targetApp)
 
 if let nodeID = performID {
     guard let element = resolveElement(application, id: nodeID) else {
