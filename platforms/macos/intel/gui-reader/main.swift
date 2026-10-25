@@ -552,6 +552,106 @@ func postClick(_ point: CGPoint, nodeID: String, label: String, tap: CGEventTapL
     fputs("\(label) \(nodeID)\n", stderr)
 }
 
+func postDoubleClick(_ point: CGPoint, nodeID: String, tap: CGEventTapLocation = .cghidEventTap) {
+    guard let source = CGEventSource(stateID: .hidSystemState),
+          let down1 = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
+          let up1 = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left),
+          let down2 = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
+          let up2 = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left) else {
+        fputs("could not create a double-click for \(nodeID)\n", stderr)
+        exit(1)
+    }
+    // Open-panel icon view ignores too-tight click pairs; ~120ms matches a
+    // real double-click and actually navigates into folders.
+    down1.setIntegerValueField(.mouseEventClickState, value: 1)
+    up1.setIntegerValueField(.mouseEventClickState, value: 1)
+    down2.setIntegerValueField(.mouseEventClickState, value: 2)
+    up2.setIntegerValueField(.mouseEventClickState, value: 2)
+    down1.post(tap: tap)
+    up1.post(tap: tap)
+    Thread.sleep(forTimeInterval: 0.12)
+    down2.post(tap: tap)
+    up2.post(tap: tap)
+    fputs("double-clicked \(nodeID)\n", stderr)
+}
+
+func sameAXElement(_ a: AXUIElement, _ b: AXUIElement) -> Bool {
+    return CFEqual(a, b)
+}
+
+func isSelectedInOpenPanel(_ element: AXUIElement) -> Bool {
+    if isSelected(element) { return true }
+    var chain: [AXUIElement] = [element]
+    var current: AXUIElement? = element
+    for _ in 0..<8 {
+        guard let node = current, let parent = parentElement(node) else { break }
+        chain.append(parent)
+        current = parent
+        if let raw = copyAttribute(parent, kAXSelectedChildrenAttribute as String) {
+            for selected in elements(from: raw) {
+                if chain.contains(where: { sameAXElement($0, selected) }) {
+                    return true
+                }
+            }
+        }
+        if roleOf(parent) == "AXSheet" || roleOf(parent) == "AXWindow" {
+            break
+        }
+    }
+    return false
+}
+
+func booleanAttribute(_ element: AXUIElement, _ name: String) -> Bool? {
+    guard let raw = copyAttribute(element, name) else { return nil }
+    if CFGetTypeID(raw) == CFBooleanGetTypeID() {
+        return (raw as! NSNumber).boolValue
+    }
+    return nil
+}
+
+func isSelected(_ element: AXUIElement) -> Bool {
+    if let selected = booleanAttribute(element, kAXSelectedAttribute as String), selected {
+        return true
+    }
+    var current: AXUIElement? = element
+    for _ in 0..<4 {
+        guard let node = current else { return false }
+        if let selected = booleanAttribute(node, kAXSelectedAttribute as String), selected {
+            return true
+        }
+        current = parentElement(node)
+    }
+    return false
+}
+
+func inOpenPanel(_ element: AXUIElement) -> Bool {
+    var current: AXUIElement? = element
+    for _ in 0..<24 {
+        guard let node = current else { return false }
+        if roleOf(node) == "AXSheet" {
+            return true
+        }
+        current = parentElement(node)
+    }
+    return false
+}
+
+func openPanelIconName(_ element: AXUIElement) -> String? {
+    for text in textsOf(element) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { continue }
+        let lower = trimmed.lowercased()
+        if lower == "image" || lower == "group" || lower == "text" { continue }
+        // Icon view exposes "ai, 5 items" — keep the folder/file name.
+        if let comma = trimmed.firstIndex(of: ",") {
+            let name = String(trimmed[..<comma]).trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty { return name }
+        }
+        return trimmed
+    }
+    return nil
+}
+
 func raiseWindow(of element: AXUIElement) {
     var current: AXUIElement? = element
     for _ in 0..<20 {
@@ -624,6 +724,16 @@ func clickCenter(_ element: AXUIElement, nodeID: String) {
     }
     let point = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
     postClick(point, nodeID: nodeID, label: "clicked center of")
+}
+
+func doubleClickCenter(_ element: AXUIElement, nodeID: String, tap: CGEventTapLocation = .cghidEventTap) {
+    let frame = frameOf(element)
+    guard frame.width > 0, frame.height > 0 else {
+        fputs("node \(nodeID) has no action and no frame\n", stderr)
+        exit(1)
+    }
+    let point = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
+    postDoubleClick(point, nodeID: nodeID, tap: tap)
 }
 
 func windowElement(_ element: AXUIElement) -> AXUIElement? {
@@ -840,6 +950,70 @@ func prefersPointerClick(_ element: AXUIElement) -> Bool {
 func performClick(_ element: AXUIElement, nodeID: String) {
     if roleOf(element) == "AXMenuItem" && openAndClickMenuItem(element, nodeID: nodeID) {
         return
+    }
+    // System open/save sheet — same leaves the HTML Layout pane shows.
+    // Sidebar row labels: press the row (navigates the browser).
+    // Icon-view items: double-click so a single HTML/text click enters a
+    // folder or opens a file, matching how people use the panel.
+    if inOpenPanel(element) {
+        let role = roleOf(element)
+        raiseWindow(of: element)
+        if role == "AXStaticText" {
+            var current: AXUIElement? = element
+            for _ in 0..<6 {
+                guard let node = current else { break }
+                if roleOf(node) == "AXRow" {
+                    _ = setSelected(node)
+                    if performAction(node, kAXPressAction as String) {
+                        fputs("pressed open-panel row for \(nodeID)\n", stderr)
+                        return
+                    }
+                    clickCenter(node, nodeID: nodeID)
+                    return
+                }
+                current = parentElement(node)
+            }
+        }
+        let iconLike = role == "AXGroup" || role == "AXImage" || role == "AXCell"
+        if iconLike {
+            // Prefer the image leaf center when a group was targeted.
+            var target = element
+            if role == "AXGroup" {
+                if let image = childrenOf(element).first(where: { roleOf($0) == "AXImage" }) {
+                    target = image
+                }
+            }
+            let name = openPanelIconName(target) ?? openPanelIconName(element) ?? nodeID
+            let frame = frameOf(target)
+            guard frame.width > 0, frame.height > 0 else {
+                fputs("node \(nodeID) has no frame\n", stderr)
+                exit(1)
+            }
+            let point = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
+            // First click selects; a second click on the selection enters the
+            // folder (slow double-click). That lets HTML: click ai → click ai
+            // → click app-use → click Open.
+            if isSelectedInOpenPanel(target) || isSelectedInOpenPanel(element) {
+                postDoubleClick(point, nodeID: nodeID, tap: .cgSessionEventTap)
+                Thread.sleep(forTimeInterval: 0.25)
+                fputs("entered open-panel item \(name) (\(nodeID))\n", stderr)
+                return
+            }
+            postClick(point, nodeID: nodeID, label: "selected open-panel item", tap: .cgSessionEventTap)
+            _ = setSelected(target)
+            _ = setSelected(element)
+            fputs("selected open-panel item \(name) (\(nodeID))\n", stderr)
+            return
+        }
+        if role == "AXRow" {
+            _ = setSelected(element)
+            if performAction(element, kAXPressAction as String) {
+                fputs("pressed open-panel row \(nodeID)\n", stderr)
+                return
+            }
+            clickCenter(element, nodeID: nodeID)
+            return
+        }
     }
     if roleOf(element) == "AXMenuButton" && !childrenOf(element).contains(where: { roleOf($0) == "AXMenu" && menuItemCount($0) > 0 }) {
         _ = performAction(element, kAXPressAction as String)

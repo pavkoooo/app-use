@@ -228,10 +228,21 @@
       }
 
       function frameLabel(lines) {
+        // Open-panel icon view often exposes "ai, 5 items" plus a short "ai".
+        // Prefer the short folder/file name so Layout clicks match what a person reads.
+        var shortName = "";
         for (var i = 0; i < lines.length; i++) {
-          if (lines[i] !== "0" && lines[i] !== "1") return lines[i];
+          var line = lines[i];
+          if (line === "0" || line === "1") continue;
+          var comma = line.indexOf(", ");
+          if (comma > 0 && / items?$/i.test(line.slice(comma + 2))) {
+            shortName = line.slice(0, comma);
+            continue;
+          }
+          if (shortName && line === shortName) return shortName;
+          if (!shortName) return line;
         }
-        return lines.length ? lines[0] : "";
+        return shortName || (lines.length ? lines[0] : "");
       }
 
       function say(text) {
